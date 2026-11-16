@@ -66,6 +66,8 @@ where = ["src"]
 line-length = 179
 indent-width = 4
 target-version = "py39"
+# Prose with illustrative, hand-aligned code blocks; docs/plan.md is a historical record.
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

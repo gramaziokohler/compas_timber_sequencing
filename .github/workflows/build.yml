@@ -7,12 +7,17 @@ on:
 
 jobs:
   core:
-    name: core / python ${{ matrix.python }}
-    runs-on: ubuntu-latest
+    name: core / python ${{ matrix.python }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.12", "3.14"]
+        include:
+          # Rhino 8 ships Python 3.9, so it stays. ubuntu-latest (26.04) has no 3.9 build;
+          # windows-latest does, which is also how compas_timber covers 3.9.
+          - {os: windows-latest, python: "3.9"}
+          - {os: ubuntu-latest, python: "3.12"}
+          - {os: ubuntu-latest, python: "3.14"}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
