@@ -22,16 +22,17 @@ scipy: the solver is dot products and cross products. Python 3.9 syntax througho
 this must run under Rhino's CPython.
 
 ``compas_timber`` is an optional dependency (``pip install compas_timber_sequencing[timber]``)
-used by one module, :mod:`compas_timber_sequencing.timber`, which this package does not import
-on its own. ``compas_timber`` never imports this package: the joints describe their own
-kinematics through :meth:`compas_timber.connections.Joint.get_kinematic_constraint`, and
-sequencing them is this package's business.
+used by two parts, neither of which this package imports on its own:
 
-Everything the algorithms are permitted to know about a model passes through
-:class:`~compas_timber_sequencing.boundary.SequencingInput`. The adapter in
-:mod:`compas_timber_sequencing.timber` builds one from a ``TimberModel``; constraint
-*computation* stays on the joint classes where the joint's private geometry lives, and only
-*consumption* lives here.
+* :mod:`compas_timber_sequencing.kinematics` -- how each ``compas_timber`` joint lets its
+  members be pulled apart, computed from outside ``compas_timber`` and dispatched on the
+  joint's class.
+* :mod:`compas_timber_sequencing.timber` -- the adapter from a ``TimberModel`` to a
+  :class:`~compas_timber_sequencing.boundary.SequencingInput` and back.
+
+``compas_timber`` itself knows nothing about sequencing. Everything the algorithms are
+permitted to know about a model passes through
+:class:`~compas_timber_sequencing.boundary.SequencingInput`.
 
 Known limitations, accepted
 ---------------------------

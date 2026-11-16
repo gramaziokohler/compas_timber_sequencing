@@ -1,10 +1,9 @@
 """Adapter between :class:`~compas_timber.model.TimberModel` and the sequencer.
 
-This is the only module that imports ``compas_timber``; the rest of the package depends on
-``compas`` alone. Constraint *computation* stays on the joint classes in ``compas_timber``
-(:meth:`compas_timber.connections.Joint.get_kinematic_constraint`), where the joint's private
-geometry lives; only *consumption* happens here. The adapter's job is to flatten a model
-into a :class:`~compas_timber_sequencing.boundary.SequencingInput` and to write a
+Together with :mod:`compas_timber_sequencing.kinematics`, which computes each joint's
+constraints, this is the only part of the package that imports ``compas_timber``; the rest
+depends on ``compas`` alone. The adapter's job is to flatten a model into a
+:class:`~compas_timber_sequencing.boundary.SequencingInput` and to write a
 :class:`~compas_timber_sequencing.result.SequenceResult` back onto the model's elements.
 
 Install with the ``timber`` extra to get ``compas_timber``::
@@ -25,13 +24,14 @@ Two facts worth stating out loud, because both are limitations a user will meet:
 
 from compas.geometry import Line
 from compas.geometry import Vector
-from compas_timber.connections import Joint
 
 from compas_timber_sequencing import APPROACH_DISTANCE
 from compas_timber_sequencing import HalfSpace
 from compas_timber_sequencing import SequencingInput
 from compas_timber_sequencing import SignedAxis
 from compas_timber_sequencing import generate as generate_sequence
+from compas_timber_sequencing.kinematics import is_fallback
+from compas_timber_sequencing.kinematics import kinematic_constraint
 
 MANUAL_ATTRIBUTE = "requires_manual_assembly"
 """str: Element attribute holding the hand-placement flag.
@@ -56,19 +56,6 @@ this is about two thousandths of a degree.
 
 def _element_id(element):
     return str(element.guid)
-
-
-def _uses_generic_fallback(joint):
-    """Whether this joint inherits the permissive base implementation.
-
-    The base :meth:`~compas_timber.connections.Joint.get_kinematic_constraint` returns a
-    single half-space pointing roughly beam-to-beam, which almost always yields a valid
-    extraction. A large fraction of the joint library still relies on it, and nothing else
-    distinguishes "computed" from "nobody implemented this joint". Constraints from the
-    fallback are tagged so results can report how much of the answer was a guess.
-
-    """
-    return type(joint).get_kinematic_constraint is Joint.get_kinematic_constraint
 
 
 def constraints_from_joint_output(raw, inferred=False):
@@ -394,8 +381,10 @@ class TimberModelAdapter(object):
             partners = set(_element_id(other) for other in joint.elements) - {element_id}
             if not partners & set(active_neighbor_ids):
                 continue
-            raw = joint.get_kinematic_constraint(element)
-            constraints.extend(constraints_from_joint_output(raw, inferred=_uses_generic_fallback(joint)))
+            # Joints without a registered implementation get the permissive fallback; its
+            # constraints are tagged so results can report how much of the answer was a guess.
+            raw = kinematic_constraint(joint, element)
+            constraints.extend(constraints_from_joint_output(raw, inferred=is_fallback(joint)))
         return constraints
 
     def _bounds(self, element_id):

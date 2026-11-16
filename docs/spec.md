@@ -4,9 +4,9 @@ How `compas_timber_sequencing` computes a robotic assembly order, a per-element 
 vector, and an explicit set of elements that must be placed by hand, for a `compas_timber`
 model.
 
-The algorithms live in `compas_timber_sequencing`; the model adapter is
-`compas_timber_sequencing.timber`. The per-joint input,
-`Joint.get_kinematic_constraint`, lives in `compas_timber`.
+The algorithms live in `compas_timber_sequencing`; the per-joint input is
+`compas_timber_sequencing.kinematics.kinematic_constraint`, and the model adapter is
+`compas_timber_sequencing.timber`. `compas_timber` itself is unchanged.
 
 ---
 
@@ -32,10 +32,9 @@ exceptions easy to express, not to be right unaided.
 ## 2. Where the code lives
 
 ```
-compas_timber                           (separate repository)
-  connections/*.py                      Joint.get_kinematic_constraint, per joint
-
 compas_timber_sequencing/src/compas_timber_sequencing/
+  kinematics/     kinematic_constraint(joint, element): per-joint freedom, dispatched on the
+                  joint's class (butt, lap, miter, mortise_tenon, step, scarf, plate)
   boundary.py     SequencingInput — everything the algorithms may touch
   constraints.py  HalfSpace, SignedAxis, validation
   solver.py       pure: solve(constraints) -> Solution | Locked
@@ -45,12 +44,12 @@ compas_timber_sequencing/src/compas_timber_sequencing/
   compare.py      side-by-side scoring of strategies
   result.py       SequenceResult, StuckReport, StalenessReport
   trace.py        opt-in tracing
-  timber.py       TimberModel -> SequencingInput adapter; the only module importing compas_timber
+  timber.py       TimberModel -> SequencingInput adapter
 ```
 
 The dependency runs one way: this package uses `compas_timber`, `compas_timber` never imports
-this package. Everything except `timber.py` needs `compas` alone, and `compas_timber` is the
-optional `timber` extra.
+this package. Everything except `kinematics/` and `timber.py` needs `compas` alone, and
+`compas_timber >=3.0,<4` is the optional `timber` extra.
 
 Dependencies are `compas.geometry` and the standard library — no numpy, no scipy. Python
 3.9 syntax, because it must run under Rhino's CPython.
@@ -62,8 +61,16 @@ lives. Only consumption moved.
 
 ## 3. The joint interface
 
-`Joint.get_kinematic_constraint(moving_element)` returns the freedom to pull
-`moving_element` out, assuming every other member of that joint is frozen.
+`kinematic_constraint(joint, moving_element, assembled_elements=None)` returns the freedom
+to pull `moving_element` out, assuming every other member of that joint is frozen. It is a
+`functools.singledispatch` function: implementations are registered per joint class and found
+along the class hierarchy, like a method. They read the joint's planes, reference sides and
+parameters from outside `compas_timber`; two of those reads are private methods
+(`ISimpleScarf._get_beam_side`, `TBirdsmouthJoint._get_cutting_planes`), which is why the nightly
+CI job tests against `compas_timber`'s main branch.
+
+`assembled_elements` matters only for joints with more than two members (the Y-butt), whose
+constraint on one member depends on which others are still in place. It defaults to all of them.
 
 | Return | Meaning |
 |---|---|
@@ -99,8 +106,9 @@ which is the dangerous direction to fail in.
 
 ### 3.3 The permissive base implementation
 
-The base `Joint.get_kinematic_constraint` falls back to a single half-space pointing from
-the static element's centerline midpoint to the moving element's. That almost always yields
+A joint with no registered implementation gets a single half-space pointing from the static
+element's centerline midpoint to the moving element's (or, when the two midpoints coincide, the
+axis perpendicular to both members). `is_fallback(joint)` tells the two apart. That almost always yields
 a valid extraction, and a large fraction of the joint library still relies on it.
 
 Constraints from the fallback are tagged **inferred**, counted per element as

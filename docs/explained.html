@@ -266,7 +266,7 @@
   <ul>
     <li><code>compas_timber_sequencing</code> &mdash; the algorithms. Cones, graphs, search. Depends on <code>compas.geometry</code> and nothing else. No numpy, no scipy, Python 3.9 syntax so it runs under Rhino's CPython.</li>
     <li><code>compas_timber_sequencing.timber</code> &mdash; the adapter, and the only module that imports <code>compas_timber</code>.</li>
-    <li><code>compas_timber</code> &mdash; supplies <code>Joint.get_kinematic_constraint</code>, the per-joint input.</li>
+    <li><code>compas_timber_sequencing.kinematics</code> &mdash; <code>kinematic_constraint(joint, element)</code>, the per-joint input, dispatched on the joint's class. <code>compas_timber</code> itself is unchanged.</li>
   </ul>
   <p><em>The diagram below was drawn when the adapter still lived in <code>compas_timber</code>; it now sits on the sequencing side of the line, with nothing else changed.</em></p>
 
@@ -552,11 +552,11 @@ subject to |d| = 1</code></pre>
   <p>Construction validates hard. Duplicate ids, an asymmetric neighbour map, a missing height &mdash; all raise. A missing height is an <em>error</em> rather than a default, for the same reason as above: a silent <code>0.0</code> looks like a measurement.</p>
 
   <h3>Where constraints actually come from</h3>
-  <p>When the solver asks for constraints on a beam, the adapter walks that beam's joints, skips any joint whose other members have all been removed, calls <code>joint.get_kinematic_constraint(beam)</code>, and converts the result: a <code>Line</code> becomes a <code>SignedAxis</code>, a <code>Vector</code> becomes a <code>HalfSpace</code>, a list becomes both. Anything else raises.</p>
+  <p>When the solver asks for constraints on a beam, the adapter walks that beam's joints, skips any joint whose other members have all been removed, calls <code>kinematic_constraint(joint, beam)</code>, and converts the result: a <code>Line</code> becomes a <code>SignedAxis</code>, a <code>Vector</code> becomes a <code>HalfSpace</code>, a list becomes both. Anything else raises.</p>
 
   <div class="note warn">
     <span class="tag">The permissive fallback</span>
-    <p>The base <code>Joint.get_kinematic_constraint</code> returns a single half-space pointing roughly midpoint-to-midpoint, which almost always yields a valid extraction. A large share of the joint library still inherits it, and you cannot tell "computed" from "nobody implemented this joint" by looking at the value.</p>
+    <p>A joint with no registered <code>kinematic_constraint</code> implementation gets a fallback that returns a single half-space pointing roughly midpoint-to-midpoint, which almost always yields a valid extraction. A large share of the joint library still inherits it, and you cannot tell "computed" from "nobody implemented this joint" by looking at the value.</p>
     <p>So constraints from the fallback are tagged <code>inferred</code> and counted. Check <code>result.inferred_total</code> before you trust a surprising sequence &mdash; some apparent design quirks turn out to be missing implementations.</p>
   </div>
 </section>

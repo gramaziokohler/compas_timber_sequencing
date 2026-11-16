@@ -10,13 +10,12 @@ Given a timber model, it produces:
 
 It works backwards. It takes the finished model apart one element at a time, only removing an
 element when the joints still holding it let it move, then reverses that order to get the assembly
-sequence. What each joint allows comes from `compas_timber` itself, via
-`Joint.get_kinematic_constraint`. A beam search then picks a good order among the feasible ones,
-ranked by an exchangeable strategy (bottom-up gravity by default).
+sequence. What each joint allows is worked out in this package, in
+`compas_timber_sequencing.kinematics`; `compas_timber` itself needs no changes. A beam search then
+picks a good order among the feasible ones, ranked by an exchangeable strategy (bottom-up gravity by
+default).
 
-> **Status: alpha.** Needs `Joint.get_kinematic_constraint`, which is not yet on `compas_timber`'s
-> main branch: see branch `feature/joint-kinematic-constraints` of `gramaziokohler/compas_timber`.
-> Until that is released, the `timber` extra installs `compas_timber` from that branch.
+> **Status: alpha.** Works with released `compas_timber` 3.x.
 
 ## Install
 
@@ -55,6 +54,36 @@ Overrides:
 
 Beams only for now. Plates, panels and fasteners are excluded and reported in `result.excluded`.
 
+## Joint kinematics
+
+`kinematic_constraint(joint, moving_element)` returns how a member may be pulled out of a joint
+while the other members stay put:
+
+* a `Line`: a strict 1-DOF axis, **signed**, so the member leaves along `start -> end` only;
+* a `Vector`: the inward normal of a permitted half-space;
+* a list of vectors: the intersection of those half-spaces.
+
+It is implemented for the butt (T, L, Y), lap (L, T, X), L-French-ridge lap, L-miter, tenon-mortise
+(T, L, Oligina), T-dovetail, T-step, T-birdsmouth, I-simple-scarf, and plate and panel joints. Any
+other joint gets a permissive fallback, which `is_fallback(joint)` reports. Results that rely on
+the fallback are counted in `SequenceResult.inferred_total`.
+
+The lookup is by joint class, following inheritance like a method would. To support a joint of your
+own, register it:
+
+```python
+from compas_timber_sequencing.kinematics import kinematic_constraint
+
+
+@kinematic_constraint.register(MyJoint)
+def _(joint, moving_element, assembled_elements=None): ...
+```
+
+These functions read joint attributes from outside `compas_timber`. Almost all are public, and two
+are private methods (`ISimpleScarf._get_beam_side`, `TBirdsmouthJoint._get_cutting_planes`).
+`compas_timber` is therefore pinned to `>=3.0,<4`, and a nightly CI job runs the tests against
+`compas_timber`'s main branch.
+
 ## How it works
 
 * [`docs/spec.md`](docs/spec.md): the design (constraint types, solver, blocking graph, search, ranking, overrides, known limitations).
@@ -70,14 +99,16 @@ ruff check . && ruff format --check .
 ```
 
 `tests/core` exercises the algorithms on hand-built synthetic inputs and needs only `compas`.
-`tests/timber` runs the adapter on real `compas_timber` models. It includes a regression test against
-the results the sequencer produced before it moved out of `compas_timber`.
+`tests/timber` covers the joint kinematics and runs the adapter on real `compas_timber` models. It
+includes a regression test against the results the sequencer produced before it moved out of
+`compas_timber`.
 
 ## Origin
 
-Developed inside `compas_timber` as the `assembly_sequencing` package on branch
-`feature/joint_kinematics`, archived at tag `archive/joint-kinematics`. It was moved here so the
-sequencer can evolve independently, while `compas_timber` keeps only the per-joint kinematics.
+Developed inside `compas_timber` on branch `feature/joint_kinematics`, archived at tag
+`archive/joint-kinematics`. There, the sequencer was the `assembly_sequencing` package, and the
+joint kinematics were `get_kinematic_constraint` methods on the joint classes. Both moved here so
+that `compas_timber` stays unchanged and the sequencer can evolve independently.
 
 ## License
 

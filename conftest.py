@@ -10,6 +10,7 @@ collect_ignore = []
 
 if importlib.util.find_spec("compas_timber") is None:
     collect_ignore += [
+        "src/compas_timber_sequencing/kinematics",
         "src/compas_timber_sequencing/timber.py",
         "tests/timber",
     ]

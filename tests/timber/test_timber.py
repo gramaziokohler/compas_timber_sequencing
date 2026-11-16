@@ -29,6 +29,7 @@ from compas_timber_sequencing.timber import generate_assembly_sequence
 from compas_timber_sequencing.timber import MANUAL_ATTRIBUTE
 from compas_timber_sequencing.timber import SEQUENCE_ATTRIBUTE
 from compas_timber_sequencing.timber import VECTOR_ATTRIBUTE
+from compas_timber_sequencing.kinematics import kinematic_constraint
 from compas_timber_sequencing.timber import constraints_from_joint_output
 
 WIDTH = 100.0
@@ -95,7 +96,7 @@ def test_the_inferred_flag_is_carried_through_conversion():
 
 
 def test_mortise_tenon_signs_are_opposite_for_the_two_members():
-    # The class once defined get_kinematic_constraint twice with opposite signs. That class
+    # The joint class once defined get_kinematic_constraint twice with opposite signs. That class
     # of defect only ever surfaces as a sign flip in output, so pin it: main_beam takes
     # + axis, cross_beam takes - axis.
     main_beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), 80, 100)
@@ -103,8 +104,8 @@ def test_mortise_tenon_signs_are_opposite_for_the_two_members():
     joint = TTenonMortiseJoint(main_beam=main_beam, cross_beam=cross_beam)
 
     axis = cross_beam.ref_sides[joint.cross_beam_ref_side_index].normal
-    main_constraint = constraints_from_joint_output(joint.get_kinematic_constraint(main_beam))[0]
-    cross_constraint = constraints_from_joint_output(joint.get_kinematic_constraint(cross_beam))[0]
+    main_constraint = constraints_from_joint_output(kinematic_constraint(joint, main_beam))[0]
+    cross_constraint = constraints_from_joint_output(kinematic_constraint(joint, cross_beam))[0]
 
     assert main_constraint.direction.dot(axis) == pytest.approx(1.0)
     assert cross_constraint.direction.dot(axis) == pytest.approx(-1.0)
@@ -115,7 +116,7 @@ def test_mortise_tenon_is_a_strict_one_dof_constraint():
     main_beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), 80, 100)
     cross_beam = Beam.from_centerline(Line(Point(500, -300, 0), Point(500, 300, 0)), 80, 100)
     joint = TTenonMortiseJoint(main_beam=main_beam, cross_beam=cross_beam)
-    assert isinstance(constraints_from_joint_output(joint.get_kinematic_constraint(main_beam))[0], SignedAxis)
+    assert isinstance(constraints_from_joint_output(kinematic_constraint(joint, main_beam))[0], SignedAxis)
 
 
 # ---------------------------------------------------------------------------

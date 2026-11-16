@@ -30,10 +30,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# TODO: replace with a released version once Joint.get_kinematic_constraint is on compas_timber's
-# main branch (gramaziokohler/compas_timber, branch feature/joint-kinematic-constraints).
+# compas_timber_sequencing.kinematics reads joint internals; the upper bound keeps a major
+# compas_timber release from breaking it silently. The nightly CI job tests against main.
 timber = [
-    "compas_timber @ git+https://github.com/gramaziokohler/compas_timber.git@feature/joint-kinematic-constraints",
+    "compas_timber >=3.0, <4",
 ]
 dev = [
     "pytest >=7",

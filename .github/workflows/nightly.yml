@@ -1,0 +1,24 @@
+name: nightly against compas_timber main
+
+# compas_timber_sequencing.kinematics reads compas_timber joint internals that compas_timber
+# does not promise to keep stable. This runs the full suite against compas_timber's main
+# branch every night, so a rename upstream shows up here within a day rather than at the next
+# compas_timber release.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  timber-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pip install "compas_timber @ git+https://github.com/gramaziokohler/compas_timber.git@main"
+      - run: python -c "import compas_timber; print('compas_timber', compas_timber.__version__, compas_timber.__file__)"
+      - run: pytest
