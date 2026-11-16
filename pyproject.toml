@@ -1,0 +1,103 @@
+# ============================================================================
+# Project info
+# ============================================================================
+
+[project]
+name = "compas_timber_sequencing"
+description = "Assembly sequencing for COMPAS Timber models: assembly order, insertion vectors and the hand-placement set, from joint kinematics."
+authors = [
+    {name = "Paul Jaeggi"},
+]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.9"
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: Scientific/Engineering",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+    "compas >=2.15.1, <3.0",
+]
+
+[project.optional-dependencies]
+# TODO: replace with a released version once Joint.get_kinematic_constraint is on compas_timber's
+# main branch (gramaziokohler/compas_timber, branch feature/joint-kinematic-constraints).
+timber = [
+    "compas_timber @ git+https://github.com/gramaziokohler/compas_timber.git@feature/joint-kinematic-constraints",
+]
+dev = [
+    "pytest >=7",
+    "ruff",
+]
+
+[project.urls]
+Repository = "https://github.com/gramaziokohler/compas_timber_sequencing"
+Issues = "https://github.com/gramaziokohler/compas_timber_sequencing/issues"
+
+# ============================================================================
+# Setuptools
+# ============================================================================
+
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "compas_timber_sequencing.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ============================================================================
+# Linting and formatting (same settings as compas_timber)
+# ============================================================================
+
+[tool.ruff]
+line-length = 179
+indent-width = 4
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["I001"]
+"tests/*" = ["I001"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+known-first-party = [
+    "compas_timber_sequencing",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 179
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+
+# ============================================================================
+# Testing
+# ============================================================================
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["src", "tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers --doctest-modules --tb=short"
+doctest_optionflags = "NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL ALLOW_UNICODE ALLOW_BYTES NUMBER"
+filterwarnings = "ignore::DeprecationWarning"
