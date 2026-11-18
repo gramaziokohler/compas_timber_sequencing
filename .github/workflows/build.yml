@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  core:
-    name: core / python ${{ matrix.python }} / ${{ matrix.os }}
+  test:
+    name: test / python ${{ matrix.python }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -24,24 +24,6 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
-      # Without compas_timber, conftest.py skips the adapter and tests/timber.
-      - run: pytest
-
-  timber:
-    name: timber / python ${{ matrix.python }} / ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {os: windows-latest, python: "3.9"}
-          - {os: ubuntu-latest, python: "3.12"}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - run: pip install -e ".[timber,dev]"
       - run: pytest
 
   lint:

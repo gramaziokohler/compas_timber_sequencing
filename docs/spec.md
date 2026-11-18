@@ -71,7 +71,7 @@ compas_timber_sequencing/src/compas_timber_sequencing/
 
 The dependency runs one way: this package uses `compas_timber`, `compas_timber` never imports
 this package. Everything except `kinematics/` and `timber.py` needs `compas` alone, and
-`compas_timber >=3.0,<4` is the optional `timber` extra.
+`compas_timber >=3.0,<4` is a required dependency. A test enforces the layering (§2).
 
 Dependencies are `compas.geometry` and the standard library — no numpy, no scipy. Python
 3.9 syntax, because it must run under Rhino's CPython.

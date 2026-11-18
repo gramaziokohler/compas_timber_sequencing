@@ -131,19 +131,19 @@ def explain_first_stuck_element(model, result, distance=APPROACH_DISTANCE):
 
 def obstructions(adapter, element_id, direction, distance, active_ids):
     """Which elements the swept broad-phase says are in the way. Empty means clear."""
-    from compas_timber_sequencing.timber import _bounds_overlap
+    from compas_timber_sequencing.collision import bounds_overlap
+    from compas_timber_sequencing.collision import swept_aabb
     from compas_timber_sequencing.timber import _element_id
-    from compas_timber_sequencing.timber import _swept_aabb
 
     element = adapter.elements_by_id[element_id]
-    swept = _swept_aabb(element.obb, direction, distance)
+    swept = swept_aabb(element.obb, direction, distance)
     neighbor_ids = set(_element_id(other) for joint in adapter._joints_for(element) for other in joint.elements)
     candidates = (set(active_ids) - neighbor_ids - {element_id}) | set(adapter._excluded_elements)
 
     hits = []
     for other_id in sorted(candidates, key=str):
         try:
-            if _bounds_overlap(swept, adapter._bounds(other_id)):
+            if bounds_overlap(swept, adapter._bounds(other_id)):
                 hits.append(other_id)
         except Exception:
             continue

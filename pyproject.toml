@@ -27,14 +27,12 @@ classifiers = [
 ]
 dependencies = [
     "compas >=2.15.1, <3.0",
+    # compas_timber_sequencing.kinematics reads joint internals; the upper bound keeps a major
+    # compas_timber release from breaking it silently. The nightly CI job tests against main.
+    "compas_timber >=3.0, <4",
 ]
 
 [project.optional-dependencies]
-# compas_timber_sequencing.kinematics reads joint internals; the upper bound keeps a major
-# compas_timber release from breaking it silently. The nightly CI job tests against main.
-timber = [
-    "compas_timber >=3.0, <4",
-]
 dev = [
     "pytest >=7",
     "ruff",

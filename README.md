@@ -20,7 +20,7 @@ default).
 ## Install
 
 ```bash
-pip install "compas_timber_sequencing[timber] @ git+https://github.com/gramaziokohler/compas_timber_sequencing.git"
+pip install "compas_timber_sequencing @ git+https://github.com/gramaziokohler/compas_timber_sequencing.git"
 ```
 
 Without the `timber` extra you get the sequencing algorithms alone. They depend on `compas` only, and

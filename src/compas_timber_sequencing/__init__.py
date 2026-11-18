@@ -21,12 +21,12 @@ The algorithms depend on ``compas.geometry`` and the standard library only. No n
 scipy: the solver is dot products and cross products. Python 3.9 syntax throughout, because
 this must run under Rhino's CPython.
 
-``compas_timber`` is an optional dependency (``pip install compas_timber_sequencing[timber]``)
-used by two parts, neither of which this package imports on its own:
+``compas_timber`` is a required dependency, but only two parts import it, and nothing else in
+the package imports those two (``tests/core/test_layering.py`` enforces both):
 
 * :mod:`compas_timber_sequencing.kinematics` -- how each ``compas_timber`` joint lets its
-  members be pulled apart, computed from outside ``compas_timber`` and dispatched on the
-  joint's class.
+  members be pulled apart, computed from outside ``compas_timber``, looked up by the joint's
+  exact class.
 * :mod:`compas_timber_sequencing.timber` -- the adapter from a ``TimberModel`` to a
   :class:`~compas_timber_sequencing.boundary.SequencingInput` and back.
 
