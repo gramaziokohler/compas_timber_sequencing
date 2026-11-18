@@ -1,5 +1,7 @@
 # compas_timber_sequencing
 
+[![build](https://github.com/gramaziokohler/compas_timber_sequencing/actions/workflows/build.yml/badge.svg)](https://github.com/gramaziokohler/compas_timber_sequencing/actions/workflows/build.yml)
+
 Assembly sequencing for [COMPAS Timber](https://github.com/gramaziokohler/compas_timber) models.
 
 Given a timber model, it produces:
@@ -23,16 +25,20 @@ default).
 pip install "compas_timber_sequencing @ git+https://github.com/gramaziokohler/compas_timber_sequencing.git"
 ```
 
-Without the `timber` extra you get the sequencing algorithms alone. They depend on `compas` only, and
-you supply the constraints yourself through `SequencingInput`.
+Requires Python 3.9 or later (Rhino 8's CPython included), `compas >=2.15.1,<3` and
+`compas_timber >=3.0,<4`, which are installed with it.
+
+The algorithms themselves (`core/` and `ranking/`) do not use `compas_timber`. To sequence something
+that is not a timber model, build a `SequencingInput` yourself and call `generate()`; see
+`tests/synthetic.py` for examples.
 
 ## Use
 
 ```python
-from compas_timber_sequencing.timber import assembly_order
-from compas_timber_sequencing.timber import generate_assembly_sequence
+from compas_timber_sequencing import assembly_order
+from compas_timber_sequencing import generate_assembly_sequence
 
-result, adapter = generate_assembly_sequence(model)
+result, adapter = generate_assembly_sequence(model)  # model: a compas_timber TimberModel
 
 if not result.is_complete:
     print(result.stuck.describe())
@@ -46,13 +52,13 @@ for element_id in result.order:
 ordered_beams = assembly_order(model)
 ```
 
-Overrides:
+Options of `generate_assembly_sequence`, all importable from `compas_timber_sequencing`:
 
-* `manual_set=...` declares elements as hand-placed. It is stored on the elements and survives re-runs.
+* `manual_set=...` declares elements (by `str(element.guid)`) as hand-placed. It is stored on the elements and survives re-runs.
 * `pinned_order=...` fixes positions for one particular build.
 * `strategy=make_strategy("clearance")` uses a different ranking. `compare_strategies` scores them side by side, and `scripts/compare_strategies.py` runs that on a saved model.
 * `use_geometry=False` skips the collision check and trusts the joints alone; `distance=` sets the approach distance (default 100 model units); `width=` sets how many partial orders the search keeps (default 5); `apply_to_model=False` leaves the model untouched.
-* `set_tracer(True)` prints each search step, and `set_tracer(lines.append)` collects the steps into a list, for a Grasshopper panel.
+* `set_tracer(True)` prints each search step, and `set_tracer(lines.append)` collects the steps into a list, for a Grasshopper panel. This one is a separate function, not an option.
 
 Beams only. Any other element is excluded and reported in `result.excluded`.
 
@@ -112,9 +118,6 @@ These functions read joint attributes from outside `compas_timber`. Almost all a
 are private methods (`ISimpleScarf._get_beam_side`, `TBirdsmouthJoint._get_cutting_planes`).
 `compas_timber` is therefore pinned to `>=3.0,<4`, and a nightly CI job runs the tests against
 `compas_timber`'s main branch.
-
-Joints with more than two members (the Y-butt) are evaluated as if all members were in place, as
-long as any one of them is.
 
 ## How it works
 
@@ -184,7 +187,13 @@ It writes only `element.attributes`: `assembly_sequence`, `insertion_vector`,
 ## Known issues
 
 * **After a stuck run** (`result.is_complete` is `False`), the indices written into the element
-  attributes are not absolute assembly positions; see [`docs/spec.md`](docs/spec.md) §11.
+  attributes are not absolute assembly positions, and beams the search never reached keep whatever
+  an earlier run wrote; see [`docs/spec.md`](docs/spec.md) §11.
+* **The `clearance` strategy is sensitive to the last digit of the geometry.** It ranks on the raw
+  clearance value, so beams with equal clearances can swap places when the geometry changes by
+  rounding error alone (this happened between `compas_timber` 2.x and 3.0 on one test model).
+* **Joints with more than two members** (the Y-butt) are evaluated as if all members were in place,
+  as long as any one of them is. That is conservative: it can only report less freedom than there is.
 
 ## Development
 
@@ -199,7 +208,11 @@ hand-built inputs in `tests/synthetic.py`. `tests/kinematics` checks every joint
 every beam joint in `compas_timber` is either implemented or knowingly left out. `tests/timber` runs the
 adapter and the collision test on real models, and includes a regression test against the results the
 sequencer produced before it moved out of `compas_timber`. `tests/test_layering.py` enforces which
-folders may import `compas_timber`.
+folders may import `compas_timber`, and `tests/test_examples.py` runs the example.
+
+CI runs the tests on Python 3.9 (Windows), 3.12 and 3.14 (Ubuntu) on every push, plus a nightly run
+against `compas_timber`'s main branch (`.github/workflows/nightly.yml`) to catch upstream changes to
+the joint internals that `kinematics/` reads.
 
 ## Origin
 
