@@ -66,19 +66,31 @@ while the other members stay put:
 * a list of vectors: the intersection of those half-spaces.
 
 It is implemented for the butt (T, L, Y), lap (L, T, X), L-French-ridge lap, L-miter, tenon-mortise
-(T, L, Oligina), T-dovetail, T-step, T-birdsmouth and I-simple-scarf joints. Any
-other joint gets a permissive fallback, which `is_fallback(joint)` reports. Results that rely on
+(T, L), T-dovetail, T-step, T-birdsmouth and I-simple-scarf joints. Any other joint gets a
+permissive fallback, which `is_fallback(joint)` reports. Results that rely on
 the fallback are counted in `SequenceResult.inferred_total`.
 
-The lookup is by joint class, following inheritance like a method would. To support a joint of your
-own, register it:
+There is one module per `compas_timber.connections` module, with the same name: the kinematics of
+`TDovetailJoint` (`compas_timber/connections/t_dovetail.py`) live in
+`compas_timber_sequencing/kinematics/t_dovetail.py`. Each defines a `constraint` function and
+registers it for its joint class.
+
+The registry is explicit and matches the **exact** joint class. A subclass does not inherit its
+parent's kinematics: kinematics are specific to each joint and are checked by hand, so a joint
+nobody has looked at gets the flagged fallback rather than a borrowed answer. A subclass that really
+behaves like its parent is registered for the same function, as `TTenonMortiseJoint` and
+`LTenonMortiseJoint` are. A test lists every beam joint in `compas_timber` and fails when one is
+neither implemented nor knowingly left out (`BallNodeJoint`, `CompositeJoint`, `XNotchJoint`,
+`TOliGinaJoint`, and the abstract `LapJoint`), so a joint added upstream shows up on the nightly run.
+
+To support a joint of your own, register it:
 
 ```python
-from compas_timber_sequencing.kinematics import kinematic_constraint
+from compas_timber_sequencing.kinematics import register
 
 
-@kinematic_constraint.register(MyJoint)
-def _(joint, moving_element, assembled_elements=None): ...
+@register(MyJoint)
+def constraint(joint, moving_element, assembled_elements=None): ...
 ```
 
 These functions read joint attributes from outside `compas_timber`. Almost all are public, and two
@@ -119,7 +131,7 @@ TimberModel ──► timber.py (adapter) ──► SequencingInput ──► se
 
 | Module | Needs `compas_timber` | Role |
 |---|---|---|
-| `kinematics/` | yes | Per-joint freedom, dispatched on the joint's class |
+| `kinematics/` | yes | Per-joint freedom: one module per `compas_timber` joint module, explicit registry by exact joint class |
 | `timber.py` | yes | Model ⇄ `SequencingInput`; writes the result into `element.attributes` |
 | `boundary.py` | no | `SequencingInput`, everything the algorithms may know |
 | `constraints.py` | no | `HalfSpace`, `SignedAxis` |

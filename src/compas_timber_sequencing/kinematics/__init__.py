@@ -1,22 +1,32 @@
-"""Joint kinematics for ``compas_timber`` joints.
+"""Joint kinematics for ``compas_timber`` beam joints.
 
 How each joint lets its members be pulled apart, computed from outside ``compas_timber`` by reading
 the joint's planes, reference sides and parameters. :func:`kinematic_constraint` is the single entry
-point; it dispatches on the joint's class.
+point.
 
-Implemented for :class:`~compas_timber.connections.ButtJoint` and its T, L and Y variants, the L, T and
-X laps, the L-French-ridge lap, the L-miter, :class:`~compas_timber.connections.MortiseTenonJoint`
-(and through it the T and L tenon-mortise and the Oligina joints), the T-dovetail, the T-step joint,
-the T-birdsmouth and the I-simple-scarf. Everything else gets the permissive fallback; see
-:func:`is_fallback`.
+Layout
+------
+One module per ``compas_timber.connections`` module, with the same name: the kinematics of
+``TDovetailJoint`` (``compas_timber/connections/t_dovetail.py``) are in ``kinematics/t_dovetail.py``.
+Each module defines a ``constraint(joint, moving_element, assembled_elements=None)`` function and
+registers it for its joint class.
 
-To support another joint, register it::
+Registry
+--------
+Lookup is by the **exact** joint class (:func:`register`): a subclass of a registered joint is not
+covered unless it is registered too. Kinematics are specific to each joint and are written and
+checked by hand, so a joint nobody has looked at -- including a new subclass -- gets the permissive
+fallback and is reported by :func:`is_fallback`, rather than silently inheriting an answer.
+``TTenonMortiseJoint`` and ``LTenonMortiseJoint`` share the ``MortiseTenonJoint`` implementation and
+are registered for it explicitly.
 
-    from compas_timber_sequencing.kinematics import kinematic_constraint
+To support another joint::
+
+    from compas_timber_sequencing.kinematics import register
 
 
-    @kinematic_constraint.register(MyJoint)
-    def _(joint, moving_element, assembled_elements=None): ...
+    @register(MyJoint)
+    def constraint(joint, moving_element, assembled_elements=None): ...
 
 Coupling to ``compas_timber``
 -----------------------------
@@ -28,18 +38,36 @@ and ``TBirdsmouthJoint._get_cutting_planes``. A scheduled CI job runs the tests 
 
 """
 
+from .base import fallback_constraint
 from .base import is_fallback
 from .base import kinematic_constraint
+from .base import register
+from .base import registered_joint_types
+from .base import unregister
 
-# Imported for their registrations.
-from . import butt  # noqa: F401
-from . import lap  # noqa: F401
-from . import miter  # noqa: F401
-from . import mortise_tenon  # noqa: F401
-from . import scarf  # noqa: F401
-from . import step  # noqa: F401
+# Every supported joint, one module each, imported for its registration.
+from . import butt_joint  # noqa: F401  ButtJoint
+from . import t_butt  # noqa: F401  TButtJoint
+from . import l_butt  # noqa: F401  LButtJoint
+from . import y_butt  # noqa: F401  YButtJoint
+from . import l_lap  # noqa: F401  LLapJoint
+from . import t_lap  # noqa: F401  TLapJoint
+from . import x_lap  # noqa: F401  XLapJoint
+from . import l_french_ridge_lap  # noqa: F401  LFrenchRidgeLapJoint
+from . import l_miter  # noqa: F401  LMiterJoint
+from . import mortise_tenon  # noqa: F401  MortiseTenonJoint
+from . import t_tenon_mortise  # noqa: F401  TTenonMortiseJoint
+from . import l_tenon_mortise  # noqa: F401  LTenonMortiseJoint
+from . import t_dovetail  # noqa: F401  TDovetailJoint
+from . import t_step_joint  # noqa: F401  TStepJoint
+from . import t_birdsmouth  # noqa: F401  TBirdsmouthJoint
+from . import i_simple_scarf  # noqa: F401  ISimpleScarf
 
 __all__ = [
+    "fallback_constraint",
     "is_fallback",
     "kinematic_constraint",
+    "register",
+    "registered_joint_types",
+    "unregister",
 ]

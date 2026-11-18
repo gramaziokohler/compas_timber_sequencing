@@ -265,7 +265,7 @@
   <p>Everything lives in <code>compas_timber_sequencing</code>, in three layers:</p>
   <ul>
     <li><b>The algorithms</b> &mdash; cones, graphs, search. Depend on <code>compas.geometry</code> and nothing else. No numpy, no scipy, Python 3.9 syntax so it runs under Rhino's CPython.</li>
-    <li><b><code>kinematics/</code></b> &mdash; <code>kinematic_constraint(joint, element)</code>, the per-joint input, dispatched on the joint's class. It reads each joint's planes, reference sides and parameters.</li>
+    <li><b><code>kinematics/</code></b> &mdash; <code>kinematic_constraint(joint, element)</code>, the per-joint input, looked up in an explicit registry by the joint's exact class, one module per <code>compas_timber</code> joint module. It reads each joint's planes, reference sides and parameters.</li>
     <li><b><code>timber.py</code></b> &mdash; the adapter: reads beams, joints and geometry from a <code>TimberModel</code>, builds the input, and writes the result back into <code>element.attributes</code>.</li>
   </ul>
 

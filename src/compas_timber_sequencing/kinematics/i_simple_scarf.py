@@ -1,14 +1,14 @@
-"""Kinematic constraints for ISimpleScarf."""
+"""Kinematics for :class:`compas_timber.connections.ISimpleScarf`."""
 
 import math
 
 from compas_timber.connections import ISimpleScarf
 
-from .base import kinematic_constraint
+from .base import register
 
 
-@kinematic_constraint.register(ISimpleScarf)
-def _i_simple_scarf(joint, moving_element, assembled_elements=None):
+@register(ISimpleScarf)
+def constraint(joint, moving_element, assembled_elements=None):
     """Calculates the escape constraint for the ISimpleScarf joint."""
     if moving_element not in joint.elements:
         raise ValueError("Element is not part of this joint.")

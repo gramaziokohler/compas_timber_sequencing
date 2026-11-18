@@ -54,8 +54,9 @@ exceptions easy to express, not to be right unaided.
 
 ```
 compas_timber_sequencing/src/compas_timber_sequencing/
-  kinematics/     kinematic_constraint(joint, element): per-joint freedom, dispatched on the
-                  joint's class (butt, lap, miter, mortise_tenon, step, scarf)
+  kinematics/     kinematic_constraint(joint, element): per-joint freedom. base.py holds the
+                  registry; one module per compas_timber.connections module, same name
+                  (t_butt.py, l_lap.py, t_dovetail.py, ...)
   boundary.py     SequencingInput — everything the algorithms may touch
   constraints.py  HalfSpace, SignedAxis, validation
   solver.py       pure: solve(constraints) -> Solution | Locked
@@ -84,9 +85,16 @@ outside `compas_timber`; §10 lists exactly what it touches.
 ## 3. The joint interface
 
 `kinematic_constraint(joint, moving_element, assembled_elements=None)` returns the freedom
-to pull `moving_element` out, assuming every other member of that joint is frozen. It is a
-`functools.singledispatch` function: implementations are registered per joint class and found
-along the class hierarchy, like a method. They read the joint's planes, reference sides and
+to pull `moving_element` out, assuming every other member of that joint is frozen.
+Implementations are registered with `register(JointClass)` and looked up by the **exact** class of
+the joint: a subclass is not covered by its parent's registration. Kinematics are specific to each
+joint and are written and checked by hand, so a joint nobody has looked at -- a new subclass
+included -- gets the fallback (§3.3) and is flagged, instead of silently borrowing its parent's
+answer. Subclasses that really behave like their parent are registered for the same function
+explicitly (`TTenonMortiseJoint`, `LTenonMortiseJoint`). A test walks every beam joint class in
+`compas_timber` and requires each to be either registered or listed as knowingly left out
+(`BallNodeJoint`, `CompositeJoint`, `XNotchJoint`, `TOliGinaJoint`, and the abstract `LapJoint`).
+The implementations read the joint's planes, reference sides and
 parameters from outside `compas_timber`; two of those reads are private methods
 (`ISimpleScarf._get_beam_side`, `TBirdsmouthJoint._get_cutting_planes`), which is why the nightly
 CI job tests against `compas_timber`'s main branch.
@@ -104,19 +112,19 @@ What each registered joint returns, read off the implementations:
 
 | Joint (module) | Returns |
 |---|---|
-| `ButtJoint`, `TButtJoint` (`butt`) | The butt-plane normal pointing away from the other beam; with `mill_depth`, also the two pocket walls. |
-| `LButtJoint` (`butt`) | The butt-plane normal; with `mill_depth`, also the one pocket wall the beam bears against. |
-| `YButtJoint` (`butt`) | Depends on which members are present (`assembled_elements`): ref-side normals of the present cross beams for the main beam, plus the beam direction with `mill_depth`; for a cross beam, the main beam's face and the miter plane of the other cross beam. An empty list when nothing is present. |
-| `LLapJoint` (`lap`) | Three half-spaces: the two lap cutting planes, oriented for the moving beam, and the lap face. |
-| `TLapJoint` (`lap`) | Four half-spaces: the cross beam's incident face and three faces of the main beam's lap, negated for the cross beam. |
-| `XLapJoint` (`lap`) | A `Line` along the intersection of the two cutting planes; opposite directions for the two beams. |
-| `LFrenchRidgeLapJoint` (`lap`) | Three half-spaces: the two lap cutting planes and the inclined ridge face. |
-| `LMiterJoint` (`miter`) | One half-space: the other beam's cutting-plane normal. |
-| `MortiseTenonJoint` (`mortise_tenon`) — and so `TTenonMortiseJoint`, `LTenonMortiseJoint`, `TOliGinaJoint` | A `Line` along the cross beam's reference-side normal: `+axis` for the main beam, `-axis` for the cross beam. |
-| `TDovetailJoint` (`mortise_tenon`) | A `Line` along the dovetail groove (with `rotation` applied); opposite directions for the two beams. |
-| `TStepJoint` (`step`) | Two to four half-spaces depending on `step_shape` (step, heel, tapered heel, double); with `tenon_mortise_height`, two opposed half-spaces that leave a slot. Negated for the cross beam. |
-| `TBirdsmouthJoint` (`step`) | With `mill_depth`, a `Line` along the main beam (a housed seat); otherwise the two notch faces, negated for the cross beam. |
-| `ISimpleScarf` (`scarf`) | Two half-spaces: the inclined scarf face and the beam's end direction. |
+| `ButtJoint` (`butt_joint`), `TButtJoint` (`t_butt`) | The butt-plane normal pointing away from the other beam; with `mill_depth`, also the two pocket walls. |
+| `LButtJoint` (`l_butt`) | The butt-plane normal; with `mill_depth`, also the one pocket wall the beam bears against. |
+| `YButtJoint` (`y_butt`) | Depends on which members are present (`assembled_elements`): ref-side normals of the present cross beams for the main beam, plus the beam direction with `mill_depth`; for a cross beam, the main beam's face and the miter plane of the other cross beam. An empty list when nothing is present. |
+| `LLapJoint` (`l_lap`) | Three half-spaces: the two lap cutting planes, oriented for the moving beam, and the lap face. |
+| `TLapJoint` (`t_lap`) | Four half-spaces: the cross beam's incident face and three faces of the main beam's lap, negated for the cross beam. |
+| `XLapJoint` (`x_lap`) | A `Line` along the intersection of the two cutting planes; opposite directions for the two beams. |
+| `LFrenchRidgeLapJoint` (`l_french_ridge_lap`) | Three half-spaces: the two lap cutting planes and the inclined ridge face. |
+| `LMiterJoint` (`l_miter`) | One half-space: the other beam's cutting-plane normal. |
+| `MortiseTenonJoint` (`mortise_tenon`), `TTenonMortiseJoint` (`t_tenon_mortise`), `LTenonMortiseJoint` (`l_tenon_mortise`) | A `Line` along the cross beam's reference-side normal: `+axis` for the main beam, `-axis` for the cross beam. The T and L variants register the same function explicitly. |
+| `TDovetailJoint` (`t_dovetail`) | A `Line` along the dovetail groove, in the plane of the cross beam's face (with `rotation` applied); opposite directions for the two beams. Not a mortise-tenon: the flared tenon locks the main beam's own axis, so it slides along the groove instead. |
+| `TStepJoint` (`t_step_joint`) | Two to four half-spaces depending on `step_shape` (step, heel, tapered heel, double); with `tenon_mortise_height`, two opposed half-spaces that leave a slot. Negated for the cross beam. |
+| `TBirdsmouthJoint` (`t_birdsmouth`) | With `mill_depth`, a `Line` along the main beam (a housed seat); otherwise the two notch faces, negated for the cross beam. |
+| `ISimpleScarf` (`i_simple_scarf`) | Two half-spaces: the inclined scarf face and the beam's end direction. |
 | anything else | The fallback, §3.3. |
 
 ### 3.1 The `Line` is signed

@@ -1,12 +1,12 @@
-"""Kinematic constraints for LMiterJoint."""
+"""Kinematics for :class:`compas_timber.connections.LMiterJoint`."""
 
 from compas_timber.connections import LMiterJoint
 
-from .base import kinematic_constraint
+from .base import register
 
 
-@kinematic_constraint.register(LMiterJoint)
-def _l_miter(joint, moving_element, assembled_elements=None):
+@register(LMiterJoint)
+def constraint(joint, moving_element, assembled_elements=None):
     """Calculates the escape constraint for the LMiter joint."""
     if moving_element not in joint.elements:
         raise ValueError("Element is not part of this joint.")

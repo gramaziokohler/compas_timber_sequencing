@@ -25,6 +25,7 @@ from compas.geometry import Point
 from compas.geometry import Vector
 
 from compas_timber.connections import ISimpleScarf
+from compas_timber.connections import Joint
 from compas_timber.connections import LButtJoint
 from compas_timber.connections import LFrenchRidgeLapJoint
 from compas_timber.connections import LLapJoint
@@ -44,6 +45,9 @@ from compas_timber.model import TimberModel
 
 from compas_timber_sequencing.kinematics import is_fallback
 from compas_timber_sequencing.kinematics import kinematic_constraint
+from compas_timber_sequencing.kinematics import register
+from compas_timber_sequencing.kinematics import registered_joint_types
+from compas_timber_sequencing.kinematics import unregister
 
 TOL = 1e-9
 
@@ -319,3 +323,91 @@ def test_the_fallback_handles_members_crossing_at_their_midpoints():
     assert raw_a.dot(a.centerline.direction) == pytest.approx(0.0, abs=1e-9)
     assert raw_a.dot(b.centerline.direction) == pytest.approx(0.0, abs=1e-9)
     assert raw_a.dot(raw_b) == pytest.approx(-1.0)
+
+
+# ---------------------------------------------------------------------------
+# the registry: exact types, and full coverage of compas_timber's beam joints
+# ---------------------------------------------------------------------------
+
+WITHOUT_KINEMATICS = {
+    "BallNodeJoint": "n-ary node joint; not written yet",
+    "CompositeJoint": "made of other joints; not written yet",
+    "LapJoint": "abstract base of the lap joints, which each have their own",
+    "TOliGinaJoint": "project-specific joint, left out on purpose",
+    "XNotchJoint": "not written yet",
+}
+"""Beam joints in compas_timber that knowingly get the fallback, with the reason.
+
+Every other beam joint must have its own registered implementation. When compas_timber adds a joint,
+the coverage test below fails -- on the nightly run against compas_timber's main branch -- until
+someone either writes its kinematics or lists it here.
+"""
+
+
+def _beam_joint_classes():
+    import compas_timber.connections  # noqa: F401  (defines every joint class)
+    from compas_timber.connections import PlateJoint  # plate joints are out of scope here
+
+    found = []
+    stack = [Joint]
+    while stack:
+        for cls in stack.pop().__subclasses__():
+            if cls in found or not cls.__module__.startswith("compas_timber."):
+                continue
+            found.append(cls)
+            stack.append(cls)
+    return [cls for cls in found if not issubclass(cls, PlateJoint)]
+
+
+def test_every_beam_joint_is_implemented_or_knowingly_left_out():
+    unaccounted = [cls.__name__ for cls in _beam_joint_classes() if cls not in registered_joint_types() and cls.__name__ not in WITHOUT_KINEMATICS]
+    assert unaccounted == [], "beam joints with neither kinematics nor an entry in WITHOUT_KINEMATICS: {}".format(unaccounted)
+
+
+def test_the_left_out_list_names_real_unregistered_joints():
+    by_name = {cls.__name__: cls for cls in _beam_joint_classes()}
+    for name in WITHOUT_KINEMATICS:
+        assert name in by_name, "{} is no longer a compas_timber beam joint".format(name)
+        assert is_fallback(by_name[name]), "{} has kinematics now; remove it from WITHOUT_KINEMATICS".format(name)
+
+
+def test_lookup_is_by_exact_type():
+    class MyTButtJoint(TButtJoint):
+        pass
+
+    # A subclass does not inherit its parent's kinematics: it gets the flagged fallback until
+    # someone registers it.
+    assert not is_fallback(TButtJoint)
+    assert is_fallback(MyTButtJoint)
+
+
+def test_subclasses_sharing_an_implementation_are_registered_explicitly():
+    from compas_timber.connections import LTenonMortiseJoint
+    from compas_timber.connections import MortiseTenonJoint
+    from compas_timber.connections import TOliGinaJoint
+
+    assert not is_fallback(TTenonMortiseJoint)
+    assert not is_fallback(LTenonMortiseJoint)
+    assert not is_fallback(MortiseTenonJoint)
+    assert is_fallback(TOliGinaJoint)
+
+
+def test_a_joint_type_can_only_be_registered_once():
+    with pytest.raises(ValueError):
+        register(TButtJoint)(lambda joint, moving_element, assembled_elements=None: [])
+
+
+def test_a_custom_joint_can_be_registered():
+    class MyJoint(Joint):
+        pass
+
+    @register(MyJoint)
+    def constraint(joint, moving_element, assembled_elements=None):
+        return [Vector(0, 0, 1)]
+
+    try:
+        assert not is_fallback(MyJoint)
+        assert MyJoint in registered_joint_types()
+    finally:
+        unregister(MyJoint)
+    assert is_fallback(MyJoint)
