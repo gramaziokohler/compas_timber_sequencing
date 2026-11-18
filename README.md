@@ -54,7 +54,7 @@ Overrides:
 * `use_geometry=False` skips the collision check and trusts the joints alone; `distance=` sets the approach distance (default 100 model units); `width=` sets how many partial orders the search keeps (default 5); `apply_to_model=False` leaves the model untouched.
 * `set_tracer(True)` prints each search step, and `set_tracer(lines.append)` collects the steps into a list, for a Grasshopper panel.
 
-Beams only for now. Plates, panels and fasteners are excluded and reported in `result.excluded`.
+Beams only. Any other element is excluded and reported in `result.excluded`.
 
 ## Joint kinematics
 
@@ -66,7 +66,7 @@ while the other members stay put:
 * a list of vectors: the intersection of those half-spaces.
 
 It is implemented for the butt (T, L, Y), lap (L, T, X), L-French-ridge lap, L-miter, tenon-mortise
-(T, L, Oligina), T-dovetail, T-step, T-birdsmouth, I-simple-scarf, and plate and panel joints. Any
+(T, L, Oligina), T-dovetail, T-step, T-birdsmouth and I-simple-scarf joints. Any
 other joint gets a permissive fallback, which `is_fallback(joint)` reports. Results that rely on
 the fallback are counted in `SequenceResult.inferred_total`.
 
@@ -86,7 +86,6 @@ are private methods (`ISimpleScarf._get_beam_side`, `TBirdsmouthJoint._get_cutti
 `compas_timber` is therefore pinned to `>=3.0,<4`, and a nightly CI job runs the tests against
 `compas_timber`'s main branch.
 
-`PlateJoint` has an implementation, but the adapter sequences beams only, so it is not used yet.
 Joints with more than two members (the Y-butt) are evaluated as if all members were in place, as
 long as any one of them is.
 
@@ -100,7 +99,7 @@ TimberModel ──► timber.py (adapter) ──► SequencingInput ──► se
                                                                       └── preferences.py which movable one first?
 ```
 
-1. **Adapter** (`timber.py`). Reads the beams (plates, panels and fasteners are excluded), their
+1. **Adapter** (`timber.py`). Reads the beams (every other element is excluded), their
    joints, centerline heights and lengths, and turns them into a `SequencingInput`: plain ids
    and numbers, plus two callbacks. One gives the constraints on an element from its joints that
    still have a member in place, via `kinematic_constraint`. The other sweeps the element's
@@ -150,11 +149,6 @@ It writes only `element.attributes`: `assembly_sequence`, `insertion_vector`,
 
 ## Known issues
 
-* **`compas` 2.16.0 breaks plate creation in `compas_timber` 3.0.0** (and on its main branch):
-  `Plate.from_outline_thickness` → `compas_timber.utils.is_polyline_clockwise` raises
-  `ValueError: Cannot compute the angle between one or more zero-length vectors` on a closed
-  outline. Sequencing is unaffected, because it sequences beams only. The two tests here that
-  build a plate as a fixture fail with `compas` 2.16. To be fixed in `compas_timber`.
 * **After a stuck run** (`result.is_complete` is `False`), the indices written into the element
   attributes are not absolute assembly positions; see [`docs/spec.md`](docs/spec.md) §11.
 

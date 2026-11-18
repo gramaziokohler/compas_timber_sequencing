@@ -22,17 +22,14 @@ import itertools
 import pytest
 from compas.geometry import Line
 from compas.geometry import Point
-from compas.geometry import Polyline
 from compas.geometry import Vector
 
 from compas_timber.connections import ISimpleScarf
-from compas_timber.connections import JointTopology
 from compas_timber.connections import LButtJoint
 from compas_timber.connections import LFrenchRidgeLapJoint
 from compas_timber.connections import LLapJoint
 from compas_timber.connections import LMiterJoint
 from compas_timber.connections import LTenonMortiseJoint
-from compas_timber.connections import PlateMiterJoint
 from compas_timber.connections import TBirdsmouthJoint
 from compas_timber.connections import TButtJoint
 from compas_timber.connections import TDovetailJoint
@@ -43,7 +40,6 @@ from compas_timber.connections import XLapJoint
 from compas_timber.connections import XNotchJoint
 from compas_timber.connections import YButtJoint
 from compas_timber.elements import Beam
-from compas_timber.elements import Plate
 from compas_timber.model import TimberModel
 
 from compas_timber_sequencing.kinematics import is_fallback
@@ -295,22 +291,8 @@ def test_y_butt_constrains_only_against_members_already_in_place(y_butt):
 
 
 # ---------------------------------------------------------------------------
-# plates and the generic fallback
+# the generic fallback
 # ---------------------------------------------------------------------------
-
-
-def test_plate_joint_returns_a_half_space_pointing_away_from_the_other_plate():
-    outline_a = Polyline([Point(0, 0, 0), Point(0, 10, 0), Point(10, 10, 0), Point(10, 0, 0), Point(0, 0, 0)])
-    outline_b = Polyline([Point(0, 10, 0), Point(10, 10, 0), Point(20, 20, 10), Point(0, 20, 10), Point(0, 10, 0)])
-    plate_a = Plate.from_outline_thickness(outline_a, 1)
-    plate_b = Plate.from_outline_thickness(outline_b, 1)
-    joint = PlateMiterJoint(plate_a, plate_b, topology=JointTopology.TOPO_EDGE_EDGE, a_segment_index=1, b_segment_index=0)
-
-    normal_a = kinematic_constraint(joint, plate_a)
-    normal_b = kinematic_constraint(joint, plate_b)
-    assert isinstance(normal_a, Vector)
-    assert normal_a.dot(Vector.from_start_end(plate_b.frame.point, plate_a.frame.point)) > 0.0
-    assert normal_a.unitized().dot(normal_b.unitized()) == pytest.approx(-1.0)
 
 
 def test_a_joint_without_an_implementation_falls_back_to_a_half_space_between_the_members():

@@ -140,10 +140,10 @@ def test_two_pins_on_the_same_position_report_the_dropped_one():
 
 
 def test_an_override_on_an_excluded_element_is_reported():
-    result = generate(with_excluded(), manual_set={"sheathing"})
+    result = generate(with_excluded(), manual_set={"bracket_1"})
     kind, element_id, message = list(result.staleness)[0]
     assert kind == "manual"
-    assert element_id == "sheathing"
+    assert element_id == "bracket_1"
     assert "excluded" in message
 
 

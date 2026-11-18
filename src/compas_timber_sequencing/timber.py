@@ -12,9 +12,9 @@ Install with the ``timber`` extra to get ``compas_timber``::
 
 Two facts worth stating out loud, because both are limitations a user will meet:
 
-* **Beams only.** Plates, panels, fasteners and group containers are excluded and reported
-  as such. Sequencing them would need a different notion of insertion than "slide a stick
-  along a vector", and giving them a height of zero -- which sinks them to the bottom of
+* **Beams only.** Every element that is not a beam is excluded and reported as such.
+  Sequencing it would need a different notion of insertion than "slide a stick along a
+  vector", and giving it a height of zero -- which sinks them to the bottom of
   the ranking while looking like a real measurement -- is worse than leaving them out and
   saying so.
 * **Excluded elements are invisible to the joint kinematics** but are still treated as

@@ -306,7 +306,7 @@ def bridge_with_ground():
 
 
 def with_excluded():
-    """Two beams plus a plate and a fastener that are excluded from sequencing.
+    """Two beams plus two non-beam elements that are excluded from sequencing.
 
     Excluded elements are reported out loud rather than silently sequenced at height zero,
     where they sink to the bottom of the ranking while looking like real measurements.
@@ -323,7 +323,7 @@ def with_excluded():
         table,
         base_z={"beam_low": 0.0, "beam_high": 1.0},
         centroid_z={"beam_low": 0.5, "beam_high": 1.5},
-        excluded={"sheathing": "plate elements are not sequenced", "screw_1": "fasteners are not sequenced"},
+        excluded={"bracket_1": "fasteners are not sequenced", "screw_1": "fasteners are not sequenced"},
     )
 
 

@@ -88,7 +88,7 @@ class SequencingInput(object):
         inferred subassemblies.
     excluded : dict, optional
         Maps element id -> reason string, for elements deliberately left out of the
-        sequence (plates, fasteners). These ids must not appear in `element_ids`; they
+        sequence (anything that is not a beam). These ids must not appear in `element_ids`; they
         are carried so the result can report them out loud rather than silently
         sequencing them at height zero.
     support_tolerance : float, optional

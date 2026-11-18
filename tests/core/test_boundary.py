@@ -56,7 +56,7 @@ def test_a_missing_quantity_raises_rather_than_defaulting(field):
 
 def test_an_element_cannot_be_both_sequenceable_and_excluded():
     with pytest.raises(ValueError):
-        minimal(excluded={"a": "plate"})
+        minimal(excluded={"a": "not a beam"})
 
 
 def test_constraints_must_be_callable():

@@ -141,7 +141,7 @@ def test_the_swept_check_shapes_the_reported_vector_not_just_the_order():
 def test_excluded_elements_are_reported_and_not_sequenced():
     result = generate(with_excluded())
     assert result.order == ["beam_low", "beam_high"]
-    assert set(result.excluded) == {"sheathing", "screw_1"}
+    assert set(result.excluded) == {"bracket_1", "screw_1"}
     assert "fastener" in result.excluded["screw_1"]
 
 

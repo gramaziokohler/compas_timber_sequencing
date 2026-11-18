@@ -14,7 +14,6 @@ from compas.data import json_loads
 from compas.geometry import Line
 from compas.geometry import Plane
 from compas.geometry import Point
-from compas.geometry import Polyline
 from compas.geometry import Vector
 
 from compas_timber_sequencing import HalfSpace
@@ -203,20 +202,19 @@ def test_the_swept_check_stops_short_of_something_further_than_the_approach():
     assert adapter.path_is_clear(str(mover.guid), Vector(0, 0, 1), 6000.0, active) is False
 
 
-def test_plates_are_excluded_and_reported():
-    from compas_timber.elements import Plate
+def test_elements_that_are_not_beams_are_excluded_and_reported():
+    from compas_model.elements import Element
 
     model = TimberModel()
     beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), WIDTH, HEIGHT)
     model.add_element(beam)
-    outline = Polyline([Point(0, 0, 0), Point(500, 0, 0), Point(500, 500, 0), Point(0, 500, 0), Point(0, 0, 0)])
-    plate = Plate.from_outline_thickness(outline, 20.0)
-    model.add_element(plate)
+    other = Element()
+    model.add_element(other)
 
     data = TimberModelAdapter(model).build()
     assert data.element_ids == [str(beam.guid)]
-    assert str(plate.guid) in data.excluded
-    assert "beams only" in data.excluded[str(plate.guid)]
+    assert str(other.guid) in data.excluded
+    assert "beams only" in data.excluded[str(other.guid)]
 
 
 # ---------------------------------------------------------------------------

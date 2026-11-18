@@ -7,8 +7,8 @@ point; it dispatches on the joint's class.
 Implemented for :class:`~compas_timber.connections.ButtJoint` and its T, L and Y variants, the L, T and
 X laps, the L-French-ridge lap, the L-miter, :class:`~compas_timber.connections.MortiseTenonJoint`
 (and through it the T and L tenon-mortise and the Oligina joints), the T-dovetail, the T-step joint,
-the T-birdsmouth, the I-simple-scarf, and :class:`~compas_timber.connections.PlateJoint` (and through
-it the plate and panel joints). Everything else gets the permissive fallback; see :func:`is_fallback`.
+the T-birdsmouth and the I-simple-scarf. Everything else gets the permissive fallback; see
+:func:`is_fallback`.
 
 To support another joint, register it::
 
@@ -36,7 +36,6 @@ from . import butt  # noqa: F401
 from . import lap  # noqa: F401
 from . import miter  # noqa: F401
 from . import mortise_tenon  # noqa: F401
-from . import plate  # noqa: F401
 from . import scarf  # noqa: F401
 from . import step  # noqa: F401
 

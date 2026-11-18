@@ -130,7 +130,7 @@ def candidate_directions(normals):
     lock.
 
     Repeated normals are collapsed first. A duplicate half-space is mathematically
-    redundant, and dense models produce a great many of them -- a plate jointed to a
+    redundant, and dense models produce a great many of them -- a sill jointed to a
     hundred identical studs sees the same normal a hundred times, which would otherwise
     cost ~5000 pairwise crosses for the two distinct directions actually present. Margins
     are still measured against every original constraint, so this changes the cost and not

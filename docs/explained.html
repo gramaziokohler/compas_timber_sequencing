@@ -529,14 +529,14 @@ subject to |d| = 1</code></pre>
   <h2>Collect and classify</h2>
   <p class="deck">Decide what is being sequenced, and say out loud what is not.</p>
 
-  <p>The adapter walks every element in the model and sorts it into one of two buckets. Beams are sequenceable. Everything else &mdash; plates, panels, fasteners, group containers &mdash; goes into <code>excluded</code>, each with a reason string attached.</p>
+  <p>The adapter walks every element in the model and sorts it into one of two buckets. Beams are sequenceable. Everything else goes into <code>excluded</code>, each with a reason string attached.</p>
 
   <div class="note">
     <span class="tag">Beams only, stated out loud</span>
-    <p>Sequencing a plate would need a different notion of insertion than "slide a stick along a vector". The earlier implementation silently gave non-beams a height of <code>0.0</code>, which sank them to the bottom of the ranking while looking like a real measurement. They were still sequenced, just wrongly. Excluding them with a reason is the honest version of the same limitation.</p>
+    <p>Sequencing anything other than a beam would need a different notion of insertion than "slide a stick along a vector". The earlier implementation silently gave non-beams a height of <code>0.0</code>, which sank them to the bottom of the ranking while looking like a real measurement. They were still sequenced, just wrongly. Excluding them with a reason is the honest version of the same limitation.</p>
   </div>
 
-  <p>Excluded elements are invisible to the joint kinematics but are still treated as physically present by the collision check. That is the conservative reading: a plate you are not sequencing can still be in the way.</p>
+  <p>Excluded elements are invisible to the joint kinematics but are still treated as physically present by the collision check. That is the conservative reading: an element you are not sequencing can still be in the way.</p>
 </section>
 
 <section id="s02">

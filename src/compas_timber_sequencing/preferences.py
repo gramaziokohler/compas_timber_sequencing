@@ -465,7 +465,7 @@ class SkeletonFirstStrategy(TermStrategy):
     """Structure first, infill last.
 
     Peripheral and short elements are removed first in disassembly, so **the long,
-    highly-connected members are placed first in assembly**: posts and plates go up as a
+    highly-connected members are placed first in assembly**: posts and sills go up as a
     frame, then studs, braces and blocking fill it in.
 
     This is how a carpenter describes the job, and it is the strategy most likely to

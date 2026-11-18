@@ -55,7 +55,7 @@ exceptions easy to express, not to be right unaided.
 ```
 compas_timber_sequencing/src/compas_timber_sequencing/
   kinematics/     kinematic_constraint(joint, element): per-joint freedom, dispatched on the
-                  joint's class (butt, lap, miter, mortise_tenon, step, scarf, plate)
+                  joint's class (butt, lap, miter, mortise_tenon, step, scarf)
   boundary.py     SequencingInput — everything the algorithms may touch
   constraints.py  HalfSpace, SignedAxis, validation
   solver.py       pure: solve(constraints) -> Solution | Locked
@@ -117,7 +117,6 @@ What each registered joint returns, read off the implementations:
 | `TStepJoint` (`step`) | Two to four half-spaces depending on `step_shape` (step, heel, tapered heel, double); with `tenon_mortise_height`, two opposed half-spaces that leave a slot. Negated for the cross beam. |
 | `TBirdsmouthJoint` (`step`) | With `mill_depth`, a `Line` along the main beam (a housed seat); otherwise the two notch faces, negated for the cross beam. |
 | `ISimpleScarf` (`scarf`) | Two half-spaces: the inclined scarf face and the beam's end direction. |
-| `PlateJoint` (`plate`) — and so every plate and panel joint | One half-space from the other plate's frame origin to this plate's. Defined, but unused today: the adapter sequences beams only. |
 | anything else | The fallback, §3.3. |
 
 ### 3.1 The `Line` is signed
@@ -233,7 +232,7 @@ The adapter's implementation (`TimberModelAdapter.path_is_clear`):
 - **Who is tested.** Every element still in place except the moving element's jointed
   neighbours, whose interaction the joint constraints already describe exactly — a beam
   sliding along a joint face would otherwise collide with it by definition. Excluded elements
-  (plates, fasteners) are always tested, as obstacles.
+  (anything that is not a beam) are always tested, as obstacles.
 - **What is swept.** The element's oriented bounding box (`element.obb`), moved from 5% of the
   approach distance to the full distance along `d`. Starting a little way out keeps elements
   already touching at the start from vetoing every direction.
@@ -278,7 +277,7 @@ in the complete assembly — is unsound. Blocking is disjunctive: an element fre
 where a good order exists.
 
 Strongly connected components of size > 1 are mutually blocking clusters: **intrinsic
-locks**. A rafter housed on both sides of a plate is the canonical case — cut the model down
+locks**. A rafter housed on both sides of a wall plate (a beam) is the canonical case — cut the model down
 to just those two and they are still stuck.
 
 This is a reduced form of Wilson & Latombe's non-directional blocking graph (~1994). The
@@ -415,8 +414,8 @@ already placed, height inversions, and **support inversions** — jointed pairs 
 element is placed before the lower one, the measurement to read first.
 `scripts/compare_strategies.py` runs this on a saved model.
 
-**Beams only, for now, stated out loud.** Plates, panels, fasteners and group containers are
-excluded from sequencing and listed in `SequenceResult.excluded`. Giving them a height of
+**Beams only, stated out loud.** Every element that is not a beam is excluded from
+sequencing and listed in `SequenceResult.excluded`. Giving them a height of
 zero sinks them to the bottom of the ranking while looking like a real measurement.
 
 Deliberately absent: any rule ordering `cross_beam` before `main_beam`. "Main" and "cross"
@@ -495,15 +494,6 @@ imports it. `compas_timber` needs no changes to be sequenced.
 two are private. The `timber` extra pins `compas_timber >=3.0,<4`, so a major release cannot
 break this silently, and `.github/workflows/nightly.yml` runs the whole suite against
 `compas_timber`'s main branch every night, so a rename shows up within a day.
-
-**Known upstream issue (November 2026).** `compas` 2.16.0 breaks plate creation in
-`compas_timber` 3.0.0 and on its main branch: `Plate.from_outline_thickness` →
-`compas_timber.utils.is_polyline_clockwise` measures an angle across the zero-length closing
-edge of a closed outline, which `compas` 2.15 tolerated and 2.16 rejects with
-`ValueError: Cannot compute the angle between one or more zero-length vectors`.
-`compas_timber`'s allowed range, `compas >=2.15.1,<3.0`, admits 2.16. Sequencing itself is
-unaffected — it sequences beams only — but the two tests in this package that build a plate as
-a fixture fail with `compas` 2.16.
 
 ---
 
