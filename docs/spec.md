@@ -11,11 +11,11 @@ The algorithms live in `compas_timber_sequencing`; the per-joint input is
 ## At a glance
 
 ```
-TimberModel ──► timber.py (adapter) ──► SequencingInput ──► search.generate() ──► SequenceResult ──► element.attributes
-                    │                     (plain data +                │
-                    └── kinematics/ ◄──── constraints callback)       ├── blocking.py    locked in every order? (once, up front)
-                        (per-joint freedom)                           ├── solver.py      can this element move right now?
-                                                                      └── preferences.py which movable one goes first?
+TimberModel ──► timber/adapter.py ──► SequencingInput ──► core/search.py ──► SequenceResult ──► element.attributes
+                    │                   (plain data +              │                                  (timber/attributes.py)
+                    └── kinematics/ ◄── constraints callback)     ├── core/blocking.py  locked in every order? (once, up front)
+                        (per-joint freedom)                       ├── core/solver.py    can this element move right now?
+                                                                  └── ranking/          which movable one goes first?
 ```
 
 1. The adapter reads the model (§10) and flattens it into a `SequencingInput`: ids, the joint
@@ -53,25 +53,35 @@ exceptions easy to express, not to be right unaided.
 ## 2. Where the code lives
 
 ```
-compas_timber_sequencing/src/compas_timber_sequencing/
-  kinematics/     kinematic_constraint(joint, element): per-joint freedom. base.py holds the
-                  registry; one module per compas_timber.connections module, same name
-                  (t_butt.py, l_lap.py, t_dovetail.py, ...)
-  boundary.py     SequencingInput — everything the algorithms may touch
-  constraints.py  HalfSpace, SignedAxis, validation
-  solver.py       pure: solve(constraints) -> Solution | Locked
-  blocking.py     blocking graph, SCC, intrinsic locks, articulation points
-  search.py       beam search over disassembly states, and generate()
-  preferences.py  injectable ranking strategies; gravity is one of them
-  compare.py      side-by-side scoring of strategies
-  result.py       SequenceResult, StuckReport, StalenessReport
-  trace.py        opt-in tracing
-  timber.py       TimberModel -> SequencingInput adapter
+src/compas_timber_sequencing/
+  __init__.py       the public API: everything below, re-exported
+  core/             the algorithms on plain data -- compas only
+    boundary.py       SequencingInput, everything the algorithms may touch
+    constraints.py    HalfSpace, SignedAxis, validation
+    solver.py         pure: solve(constraints) -> Solution | Locked
+    blocking.py       blocking graph, SCC, intrinsic locks, articulation points
+    search.py         beam search over disassembly states, and generate()
+    result.py         SequenceResult, StuckReport, StalenessReport
+    trace.py          opt-in tracing
+  ranking/          which feasible element goes first -- compas only
+    context.py        RankingContext, the strategy base class, rank()
+    terms.py          the named terms strategies are built from
+    strategies.py     gravity, layered, clearance, skeleton, subassembly, chain, random, custom
+    compare.py        side-by-side scoring of strategies
+  kinematics/       per-joint freedom -- reads compas_timber joints
+    base.py           the registry (exact joint class) and the fallback
+    t_butt.py, l_lap.py, t_dovetail.py, ...   one per compas_timber.connections module
+  timber/           everything that knows a TimberModel
+    adapter.py        TimberModel -> SequencingInput; generate_assembly_sequence()
+    attributes.py     result -> element.attributes; assembly_order()
+    collision.py      the swept-box collision test (pure compas geometry)
 ```
 
 The dependency runs one way: this package uses `compas_timber`, `compas_timber` never imports
-this package. Everything except `kinematics/` and `timber.py` needs `compas` alone, and
-`compas_timber >=3.0,<4` is a required dependency. A test enforces the layering (§2).
+this package. `compas_timber >=3.0,<4` is a required dependency, but only `kinematics/` and
+`timber/` import it. `core/` and `ranking/` depend on `compas` alone and never import
+`kinematics/` or `timber/`, and `timber/collision.py` needs `compas` only; `tests/test_layering.py`
+enforces all three. `core/search.py` uses a `ranking/` strategy to choose between feasible removals.
 
 Dependencies are `compas.geometry` and the standard library — no numpy, no scipy. Python
 3.9 syntax, because it must run under Rhino's CPython.
@@ -558,4 +568,4 @@ remain on the archived `compas_timber` branch (tag `archive/joint-kinematics`).
 
 To sequence something that is not a timber model, build a
 `compas_timber_sequencing.SequencingInput` directly and call
-`compas_timber_sequencing.generate`; see `tests/core/synthetic.py`.
+`compas_timber_sequencing.generate`; see `tests/synthetic.py`.

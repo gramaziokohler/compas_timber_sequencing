@@ -13,7 +13,7 @@ from compas_timber_sequencing import RandomStrategy
 from compas_timber_sequencing import compare_strategies
 from compas_timber_sequencing import make_strategy
 from compas_timber_sequencing import describe_comparison
-from compas_timber_sequencing.compare import StrategyReport
+from compas_timber_sequencing.ranking.compare import StrategyReport
 
 
 def test_the_default_comparison_covers_the_whole_registry():

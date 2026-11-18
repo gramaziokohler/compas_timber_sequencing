@@ -1,6 +1,6 @@
 """The swept-box collision test, on plain boxes: no model, no compas_timber.
 
-The adapter-level tests in ``tests/timber/test_timber.py`` check that the right elements are tested;
+The adapter-level tests in ``tests/timber/test_adapter.py`` check that the right elements are tested;
 these check the geometry itself.
 """
 
@@ -11,11 +11,11 @@ from compas.geometry import Frame
 from compas.geometry import Point
 from compas.geometry import Vector
 
-from compas_timber_sequencing.collision import SWEEP_START_FRACTION
-from compas_timber_sequencing.collision import bounds_overlap
-from compas_timber_sequencing.collision import box_bounds
-from compas_timber_sequencing.collision import swept_aabb
-from compas_timber_sequencing.collision import swept_box_hits_box
+from compas_timber_sequencing.timber.collision import SWEEP_START_FRACTION
+from compas_timber_sequencing.timber.collision import bounds_overlap
+from compas_timber_sequencing.timber.collision import box_bounds
+from compas_timber_sequencing.timber.collision import swept_aabb
+from compas_timber_sequencing.timber.collision import swept_box_hits_box
 
 UP = Vector(0, 0, 1)
 DOWN = Vector(0, 0, -1)

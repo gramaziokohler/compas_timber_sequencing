@@ -22,17 +22,17 @@ scipy: the solver is dot products and cross products. Python 3.9 syntax througho
 this must run under Rhino's CPython.
 
 ``compas_timber`` is a required dependency, but only two parts import it, and nothing else in
-the package imports those two (``tests/core/test_layering.py`` enforces both):
+the package imports those two (``tests/test_layering.py`` enforces both):
 
 * :mod:`compas_timber_sequencing.kinematics` -- how each ``compas_timber`` joint lets its
   members be pulled apart, computed from outside ``compas_timber``, looked up by the joint's
   exact class.
 * :mod:`compas_timber_sequencing.timber` -- the adapter from a ``TimberModel`` to a
-  :class:`~compas_timber_sequencing.boundary.SequencingInput` and back.
+  :class:`~compas_timber_sequencing.core.boundary.SequencingInput` and back.
 
 ``compas_timber`` itself knows nothing about sequencing. Everything the algorithms are
 permitted to know about a model passes through
-:class:`~compas_timber_sequencing.boundary.SequencingInput`.
+:class:`~compas_timber_sequencing.core.boundary.SequencingInput`.
 
 Known limitations, accepted
 ---------------------------
@@ -69,68 +69,76 @@ Examples
 
 """
 
-from .blocking import build_blocking_graph
-from .blocking import disconnecting_elements
-from .blocking import extract
-from .blocking import fully_blocked
-from .blocking import ground_ids
-from .blocking import intrinsic_locks
-from .blocking import order_dependent_locks
-from .blocking import strongly_connected_components
-from .blocking import subassemblies
-from .boundary import SequencingInput
-from .boundary import sort_key
-from .compare import HEADER
-from .compare import StrategyReport
-from .compare import compare_strategies
-from .compare import describe_comparison
-from .constraints import TOL
-from .constraints import Constraint
-from .constraints import HalfSpace
-from .constraints import SignedAxis
-from .constraints import validate_constraints
-from .preferences import STRATEGIES
-from .preferences import TERMS
-from .preferences import ChainStrategy
-from .preferences import ClearanceStrategy
-from .preferences import GravityStrategy
-from .preferences import HeuristicStrategy
-from .preferences import LayeredStrategy
-from .preferences import PreferenceStrategy
-from .preferences import RandomStrategy
-from .preferences import RankingContext
-from .preferences import SkeletonFirstStrategy
-from .preferences import SubassemblyStrategy
-from .preferences import TermStrategy
-from .preferences import WeightedStrategy
-from .preferences import make_strategy
-from .result import LOCKED
-from .result import ROOMY
-from .result import TIGHT
-from .result import Locked
-from .result import PinConflict
-from .result import SequenceResult
-from .result import Solution
-from .result import StalenessReport
-from .result import StuckReport
-from .search import DEFAULT_BEAM_WIDTH
-from .search import beam_search
-from .search import generate
-from .solver import APPROACH_DISTANCE
-from .solver import PARALLEL_TOL
-from .solver import ROOMY_MARGIN
-from .solver import candidate_directions
-from .solver import classify
-from .solver import rank_candidates
-from .solver import solve
-from .trace import get_tracer
-from .trace import set_tracer
-from .trace import trace
-from .trace import tracing
+from .core.blocking import build_blocking_graph
+from .core.blocking import disconnecting_elements
+from .core.blocking import extract
+from .core.blocking import fully_blocked
+from .core.blocking import ground_ids
+from .core.blocking import intrinsic_locks
+from .core.blocking import order_dependent_locks
+from .core.blocking import strongly_connected_components
+from .core.blocking import subassemblies
+from .core.boundary import SequencingInput
+from .core.boundary import sort_key
+from .ranking.compare import HEADER
+from .ranking.compare import StrategyReport
+from .ranking.compare import compare_strategies
+from .ranking.compare import describe_comparison
+from .core.constraints import TOL
+from .core.constraints import Constraint
+from .core.constraints import HalfSpace
+from .core.constraints import SignedAxis
+from .core.constraints import validate_constraints
+from .ranking.strategies import STRATEGIES
+from .ranking.terms import TERMS
+from .ranking.strategies import ChainStrategy
+from .ranking.strategies import ClearanceStrategy
+from .ranking.strategies import GravityStrategy
+from .ranking.strategies import HeuristicStrategy
+from .ranking.strategies import LayeredStrategy
+from .ranking.context import PreferenceStrategy
+from .ranking.strategies import RandomStrategy
+from .ranking.context import RankingContext
+from .ranking.strategies import SkeletonFirstStrategy
+from .ranking.strategies import SubassemblyStrategy
+from .ranking.strategies import TermStrategy
+from .ranking.strategies import WeightedStrategy
+from .ranking.strategies import make_strategy
+from .core.result import LOCKED
+from .core.result import ROOMY
+from .core.result import TIGHT
+from .core.result import Locked
+from .core.result import PinConflict
+from .core.result import SequenceResult
+from .core.result import Solution
+from .core.result import StalenessReport
+from .core.result import StuckReport
+from .core.search import DEFAULT_BEAM_WIDTH
+from .core.search import beam_search
+from .core.search import generate
+from .core.solver import APPROACH_DISTANCE
+from .core.solver import PARALLEL_TOL
+from .core.solver import ROOMY_MARGIN
+from .core.solver import candidate_directions
+from .core.solver import classify
+from .core.solver import rank_candidates
+from .core.solver import solve
+from .core.trace import get_tracer
+from .core.trace import set_tracer
+from .core.trace import trace
+from .core.trace import tracing
+from .timber.adapter import TimberModelAdapter
+from .timber.adapter import generate_assembly_sequence
+from .timber.adapter import sequencing_input_from_model
+from .timber.attributes import assembly_order
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "sequencing_input_from_model",
+    "generate_assembly_sequence",
+    "assembly_order",
+    "TimberModelAdapter",
     "APPROACH_DISTANCE",
     "ChainStrategy",
     "ClearanceStrategy",

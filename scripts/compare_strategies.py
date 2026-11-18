@@ -65,7 +65,7 @@ def custom_strategies():
 
     Returns
     -------
-    list of :class:`~compas_timber_sequencing.preferences.PreferenceStrategy`
+    list of :class:`~compas_timber_sequencing.ranking.context.PreferenceStrategy`
 
     """
     return [

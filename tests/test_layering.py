@@ -1,14 +1,17 @@
-"""The package's layering: only the model-facing modules touch compas_timber.
+"""The package's layering: only the model-facing folders touch compas_timber.
 
 ``compas_timber`` is a required dependency, so nothing at install time keeps it out of the
 algorithms any more. This test does: it reads every module's imports and fails when
 
-* anything other than ``kinematics/`` and ``timber.py`` imports ``compas_timber``, or
-* anything other than those two imports ``kinematics`` or ``timber`` -- the algorithms must not
-  reach back up into the layer that knows about models.
+* anything in ``core/`` or ``ranking/`` imports ``compas_timber``,
+* anything in ``core/`` or ``ranking/`` imports ``kinematics/`` or ``timber/`` -- the algorithms
+  must not reach back up into the layer that knows about models, or
+* ``timber/collision.py`` imports ``compas_timber`` -- it is pure geometry on boxes.
+
+The package root ``__init__`` is the public API and may re-export from every folder.
 
 That keeps the solver, the search and the ranking testable on hand-built inputs, and keeps every
-dependency on ``compas_timber`` internals in two places.
+dependency on ``compas_timber`` internals in ``kinematics/`` and ``timber/``.
 """
 
 import ast
@@ -61,15 +64,31 @@ def _is_within(name, prefixes):
 
 
 MODULES = list(_modules())
-CORE = [(module, path, is_package) for module, path, is_package in MODULES if not _is_within(module, MODEL_FACING)]
+ALGORITHMS = ("compas_timber_sequencing.core", "compas_timber_sequencing.ranking")
+CORE = [(module, path, is_package) for module, path, is_package in MODULES if _is_within(module, ALGORITHMS)]
+PURE_GEOMETRY = [(module, path, is_package) for module, path, is_package in MODULES if module == "compas_timber_sequencing.timber.collision"]
+
+
+def test_every_module_belongs_to_a_layer():
+    # A module outside the four folders would escape every rule below.
+    unplaced = [module for module, _, _ in MODULES if module != PACKAGE and not _is_within(module, ALGORITHMS + MODEL_FACING)]
+    assert unplaced == []
 
 
 def test_the_layering_test_sees_the_package():
     names = [module for module, _, _ in MODULES]
-    assert "compas_timber_sequencing.solver" in names
-    assert "compas_timber_sequencing.collision" in names
+    assert "compas_timber_sequencing.core.solver" in names
+    assert "compas_timber_sequencing.ranking.strategies" in names
+    assert "compas_timber_sequencing.timber.collision" in names
     assert "compas_timber_sequencing.kinematics.t_dovetail" in names
-    assert "compas_timber_sequencing.timber" in names
+    assert len(CORE) >= 10
+    assert len(PURE_GEOMETRY) == 1
+
+
+@pytest.mark.parametrize("module, path, is_package", PURE_GEOMETRY, ids=[module for module, _, _ in PURE_GEOMETRY])
+def test_collision_is_pure_geometry(module, path, is_package):
+    offending = sorted(name for name in _imports(module, path, is_package) if _is_within(name, ("compas_timber",)))
+    assert offending == [], "{} imports {}; it should need compas only".format(module, offending)
 
 
 @pytest.mark.parametrize("module, path, is_package", CORE, ids=[module for module, _, _ in CORE])

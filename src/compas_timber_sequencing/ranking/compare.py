@@ -4,7 +4,7 @@ There is no strategy that is best everywhere. Which one wins is a property of th
 a stick frame, a reciprocal roof and a stacked log wall want different orders -- so the
 honest way to choose is to run them and look at the numbers.
 
-This module runs :func:`~compas_timber_sequencing.search.generate` once per strategy and reports
+This module runs :func:`~compas_timber_sequencing.core.search.generate` once per strategy and reports
 the handful of measurements that distinguish a good sequence from a merely valid one. It
 deliberately does **not** collapse them into a single score: the weighting between "fewer
 tight fits" and "less travel" is the user's call about their shop, not this package's.
@@ -38,7 +38,7 @@ the number says how often that happened rather than that the ranking misbehaved.
 Examples
 --------
 >>> from compas_timber_sequencing import HalfSpace, SequencingInput
->>> from compas_timber_sequencing.compare import compare_strategies, describe_comparison
+>>> from compas_timber_sequencing.ranking.compare import compare_strategies, describe_comparison
 >>> from compas.geometry import Vector
 >>> constraints = {
 ...     ("post", frozenset(["beam"])): [HalfSpace(Vector(0, 0, -1))],
@@ -60,10 +60,10 @@ Examples
 
 """
 
-from .boundary import sort_key
-from .preferences import STRATEGIES
-from .preferences import make_strategy
-from .search import generate
+from ..core.boundary import sort_key
+from ..core.search import generate
+from .strategies import STRATEGIES
+from .strategies import make_strategy
 
 
 class StrategyReport(object):
@@ -72,13 +72,13 @@ class StrategyReport(object):
     Parameters
     ----------
     name : str
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
-    result : :class:`~compas_timber_sequencing.result.SequenceResult`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
+    result : :class:`~compas_timber_sequencing.core.result.SequenceResult`
 
     Attributes
     ----------
     name : str
-    result : :class:`~compas_timber_sequencing.result.SequenceResult`
+    result : :class:`~compas_timber_sequencing.core.result.SequenceResult`
         The full result, for anything this summary leaves out.
     is_complete : bool
     placed : int
@@ -221,14 +221,14 @@ def compare_strategies(sequencing_input, strategies=None, **kwargs):
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     strategies : iterable, optional
         Each item is either a name from
-        :data:`~compas_timber_sequencing.preferences.STRATEGIES` or a
-        :class:`~compas_timber_sequencing.preferences.PreferenceStrategy` instance. Defaults to
+        :data:`~compas_timber_sequencing.ranking.strategies.STRATEGIES` or a
+        :class:`~compas_timber_sequencing.ranking.context.PreferenceStrategy` instance. Defaults to
         every registered strategy, in name order.
     **kwargs : dict
-        Passed straight to :func:`~compas_timber_sequencing.search.generate` -- `manual_set`,
+        Passed straight to :func:`~compas_timber_sequencing.core.search.generate` -- `manual_set`,
         `pinned_order`, `width`, `distance`. The same values go to every strategy, which is
         the point: only the ranking differs.
 

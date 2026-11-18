@@ -27,7 +27,7 @@ def extract(sequencing_input, element_id, active_ids, distance=APPROACH_DISTANCE
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     element_id : hashable
         The element to extract. Must be in `active_ids`.
     active_ids : set
@@ -37,7 +37,7 @@ def extract(sequencing_input, element_id, active_ids, distance=APPROACH_DISTANCE
 
     Returns
     -------
-    :class:`~compas_timber_sequencing.result.Solution` or :class:`~compas_timber_sequencing.result.Locked`
+    :class:`~compas_timber_sequencing.core.result.Solution` or :class:`~compas_timber_sequencing.core.result.Locked`
 
     """
     active = set(active_ids)
@@ -67,7 +67,7 @@ def build_blocking_graph(sequencing_input, active_ids=None, distance=APPROACH_DI
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     active_ids : set, optional
         Defaults to the complete model.
     distance : float, optional
@@ -101,14 +101,14 @@ def fully_blocked(sequencing_input, active_ids=None, distance=APPROACH_DISTANCE)
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     active_ids : set, optional
     distance : float, optional
 
     Returns
     -------
     dict
-        Maps element id -> the :class:`~compas_timber_sequencing.result.Locked` result.
+        Maps element id -> the :class:`~compas_timber_sequencing.core.result.Locked` result.
 
     """
     active = set(sequencing_input.element_ids) if active_ids is None else set(active_ids)
@@ -215,7 +215,7 @@ def intrinsic_locks(graph):
     because every edge is an unconditional pairwise precedence. But an interlock that only
     closes across three or more elements at once -- each pair separable, the trio not --
     has no pairwise edge to find, so it is not reported here. Those surface as a
-    :class:`~compas_timber_sequencing.result.StuckReport` from the search instead, which is the
+    :class:`~compas_timber_sequencing.core.result.StuckReport` from the search instead, which is the
     honest outcome: the tool did not find an order, rather than claiming none exists.
 
     """
@@ -236,7 +236,7 @@ def subassemblies(sequencing_input, graph):
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     graph : dict
         A blocking graph from :func:`build_blocking_graph`.
 
@@ -266,12 +266,12 @@ def ground_ids(sequencing_input, active_ids=None, tolerance=None):
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     active_ids : set, optional
     tolerance : float, optional
         How far above the lowest element a base may sit and still count as being on the
         ground, in model units. Defaults to the input's
-        :attr:`~compas_timber_sequencing.boundary.SequencingInput.support_tolerance`, which asks
+        :attr:`~compas_timber_sequencing.core.boundary.SequencingInput.support_tolerance`, which asks
         the same question -- are these two at the same level? -- and is scaled to the model
         for the same reason.
 
@@ -311,7 +311,7 @@ def disconnecting_elements(sequencing_input, active_ids, grounded_ids):
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     active_ids : set
     grounded_ids : set
         The elements that count as supported, typically from :func:`ground_ids`.
@@ -416,7 +416,7 @@ def order_dependent_locks(sequencing_input, active_ids, intrinsic, distance=APPR
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     active_ids : set
     intrinsic : iterable of frozenset
         The clusters from :func:`intrinsic_locks`.
@@ -425,7 +425,7 @@ def order_dependent_locks(sequencing_input, active_ids, intrinsic, distance=APPR
     Returns
     -------
     dict
-        Maps element id -> :class:`~compas_timber_sequencing.result.Locked`.
+        Maps element id -> :class:`~compas_timber_sequencing.core.result.Locked`.
 
     """
     locked_members = set()

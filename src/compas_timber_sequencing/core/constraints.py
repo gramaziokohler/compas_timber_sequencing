@@ -2,7 +2,7 @@
 
 A constraint describes the freedom a single joint leaves to a single moving element,
 assuming every other member of that joint is frozen. Constraints are consumed by
-:mod:`compas_timber_sequencing.solver`, which intersects them.
+:mod:`compas_timber_sequencing.core.solver`, which intersects them.
 
 Two types cover the whole vocabulary:
 

@@ -69,7 +69,7 @@ class Locked(object):
 
     Whether this is an *intrinsic* lock or an *order-dependent* one is not decided here
     -- it depends on the active set this result was computed against. See
-    :mod:`compas_timber_sequencing.blocking`.
+    :mod:`compas_timber_sequencing.core.blocking`.
 
     Parameters
     ----------

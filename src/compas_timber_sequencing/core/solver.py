@@ -1,8 +1,8 @@
 """The cone feasibility solver.
 
 Pure geometry. No model, no joint classes, no Rhino -- :func:`solve` takes a list of
-constraints and returns a :class:`~compas_timber_sequencing.result.Solution` or a
-:class:`~compas_timber_sequencing.result.Locked`. That property is the point of the whole
+constraints and returns a :class:`~compas_timber_sequencing.core.result.Solution` or a
+:class:`~compas_timber_sequencing.core.result.Locked`. That property is the point of the whole
 package split: every claim about extraction feasibility can be tested against hand-built
 constraint sets.
 
@@ -87,9 +87,9 @@ def classify(margin):
     Returns
     -------
     str
-        One of :data:`~compas_timber_sequencing.result.ROOMY`,
-        :data:`~compas_timber_sequencing.result.TIGHT`,
-        :data:`~compas_timber_sequencing.result.LOCKED`.
+        One of :data:`~compas_timber_sequencing.core.result.ROOMY`,
+        :data:`~compas_timber_sequencing.core.result.TIGHT`,
+        :data:`~compas_timber_sequencing.core.result.LOCKED`.
 
     """
     if margin >= ROOMY_MARGIN:
@@ -261,7 +261,7 @@ def solve(constraints, path_check=None):
 
     Parameters
     ----------
-    constraints : list of :class:`~compas_timber_sequencing.constraints.Constraint`
+    constraints : list of :class:`~compas_timber_sequencing.core.constraints.Constraint`
         The constraints from every joint that still has an active partner. An **empty**
         list means the element is entirely free, not that it is locked.
     path_check : callable, optional
@@ -272,7 +272,7 @@ def solve(constraints, path_check=None):
 
     Returns
     -------
-    :class:`~compas_timber_sequencing.result.Solution` or :class:`~compas_timber_sequencing.result.Locked`
+    :class:`~compas_timber_sequencing.core.result.Solution` or :class:`~compas_timber_sequencing.core.result.Locked`
 
     Raises
     ------

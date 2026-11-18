@@ -43,7 +43,7 @@ from compas_timber_sequencing import disconnecting_elements
 from compas_timber_sequencing import generate
 from compas_timber_sequencing import ground_ids
 from compas_timber_sequencing import make_strategy
-from compas_timber_sequencing.preferences import rank
+from compas_timber_sequencing.ranking.context import rank
 
 UP = Vector(0, 0, 1)
 

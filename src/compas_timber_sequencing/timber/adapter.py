@@ -3,8 +3,8 @@
 Together with :mod:`compas_timber_sequencing.kinematics`, which computes each joint's
 constraints, this is the only part of the package that imports ``compas_timber``; the rest
 depends on ``compas`` alone. The adapter's job is to flatten a model into a
-:class:`~compas_timber_sequencing.boundary.SequencingInput` and to write a
-:class:`~compas_timber_sequencing.result.SequenceResult` back onto the model's elements.
+:class:`~compas_timber_sequencing.core.boundary.SequencingInput` and to write a
+:class:`~compas_timber_sequencing.core.result.SequenceResult` back onto the model's elements.
 
 Two facts worth stating out loud, because both are limitations a user will meet:
 
@@ -21,29 +21,20 @@ Two facts worth stating out loud, because both are limitations a user will meet:
 from compas.geometry import Line
 from compas.geometry import Vector
 
-from compas_timber_sequencing import APPROACH_DISTANCE
-from compas_timber_sequencing import HalfSpace
-from compas_timber_sequencing import SequencingInput
-from compas_timber_sequencing import SignedAxis
-from compas_timber_sequencing import generate as generate_sequence
-from compas_timber_sequencing.collision import SWEEP_START_FRACTION
-from compas_timber_sequencing.collision import bounds_overlap
-from compas_timber_sequencing.collision import box_bounds
-from compas_timber_sequencing.collision import swept_aabb
-from compas_timber_sequencing.collision import swept_box_hits_box
-from compas_timber_sequencing.kinematics import is_fallback
-from compas_timber_sequencing.kinematics import kinematic_constraint
-
-MANUAL_ATTRIBUTE = "requires_manual_assembly"
-"""str: Element attribute holding the hand-placement flag.
-
-Hand placement is a fact about the design, so it lives on the element and is serialized
-with the model. Pinned order is a fact about a particular build and is supplied per run.
-"""
-
-SEQUENCE_ATTRIBUTE = "assembly_sequence"
-VECTOR_ATTRIBUTE = "insertion_vector"
-STATE_ATTRIBUTE = "extraction_state"
+from ..core.boundary import SequencingInput
+from ..core.constraints import HalfSpace
+from ..core.constraints import SignedAxis
+from ..core.search import generate as generate_sequence
+from ..core.solver import APPROACH_DISTANCE
+from ..kinematics import is_fallback
+from ..kinematics import kinematic_constraint
+from .attributes import read_manual_set
+from .attributes import write_result
+from .collision import SWEEP_START_FRACTION
+from .collision import bounds_overlap
+from .collision import box_bounds
+from .collision import swept_aabb
+from .collision import swept_box_hits_box
 
 
 def _element_id(element):
@@ -64,7 +55,7 @@ def constraints_from_joint_output(raw, inferred=False):
 
     Returns
     -------
-    list of :class:`~compas_timber_sequencing.constraints.Constraint`
+    list of :class:`~compas_timber_sequencing.core.constraints.Constraint`
 
     Raises
     ------
@@ -89,7 +80,7 @@ def constraints_from_joint_output(raw, inferred=False):
 
 
 class TimberModelAdapter(object):
-    """Builds a :class:`~compas_timber_sequencing.boundary.SequencingInput` from a model.
+    """Builds a :class:`~compas_timber_sequencing.core.boundary.SequencingInput` from a model.
 
     Parameters
     ----------
@@ -205,7 +196,7 @@ class TimberModelAdapter(object):
         Excluded elements are treated as present, which is the conservative reading.
 
         Two phases. Axis-aligned bounds around the swept box reject the elements that are
-        nowhere near, cheaply; whatever survives goes to :func:`~compas_timber_sequencing.collision.swept_box_hits_box`, which
+        nowhere near, cheaply; whatever survives goes to :func:`~compas_timber_sequencing.timber.collision.swept_box_hits_box`, which
         is an exact separating-axis test between the swept oriented box and the other
         element's oriented box.
 
@@ -255,7 +246,7 @@ class TimberModelAdapter(object):
 
         Returns
         -------
-        :class:`~compas_timber_sequencing.boundary.SequencingInput`
+        :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
 
         """
         element_ids = sorted(self.elements_by_id, key=lambda i: str(i))
@@ -289,11 +280,7 @@ class TimberModelAdapter(object):
         set
 
         """
-        manual = set()
-        for element_id, element in self.elements_by_id.items():
-            if element.attributes.get(MANUAL_ATTRIBUTE):
-                manual.add(element_id)
-        return manual
+        return read_manual_set(self.elements_by_id)
 
     def apply(self, result):
         """Write a sequence result back onto the model's elements.
@@ -304,42 +291,10 @@ class TimberModelAdapter(object):
 
         Parameters
         ----------
-        result : :class:`~compas_timber_sequencing.result.SequenceResult`
+        result : :class:`~compas_timber_sequencing.core.result.SequenceResult`
 
         """
-        for index, element_id in enumerate(result.order):
-            element = self.elements_by_id[element_id]
-            vector = result.insertion_vectors[element_id]
-            is_manual = element_id in result.manual_set
-            state = result.extraction[element_id].state
-
-            element.attributes[SEQUENCE_ATTRIBUTE] = index
-            element.attributes[VECTOR_ATTRIBUTE] = vector
-            element.attributes[MANUAL_ATTRIBUTE] = is_manual
-            element.attributes[STATE_ATTRIBUTE] = state
-
-
-def assembly_order(model):
-    """The elements of a model that carry an assembly index, in assembly order.
-
-    Reads what :meth:`TimberModelAdapter.apply` wrote. Elements without an index -- excluded
-    from sequencing, or never sequenced -- are left out.
-
-    Parameters
-    ----------
-    model : :class:`~compas_timber.model.TimberModel`
-
-    Returns
-    -------
-    list of :class:`~compas_timber.elements.TimberElement`
-
-    """
-    sequenced = []
-    for element in model.elements():
-        index = element.attributes.get(SEQUENCE_ATTRIBUTE)
-        if index is not None:
-            sequenced.append((index, str(element.guid), element))
-    return [element for _, _, element in sorted(sequenced, key=lambda item: (item[0], item[1]))]
+        write_result(self.elements_by_id, result)
 
 
 def sequencing_input_from_model(model, use_geometry=True):
@@ -352,7 +307,7 @@ def sequencing_input_from_model(model, use_geometry=True):
 
     Returns
     -------
-    :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
 
     """
     return TimberModelAdapter(model, use_geometry=use_geometry).build()
@@ -378,7 +333,7 @@ def generate_assembly_sequence(
         is already persisted on the elements, so that an amended set survives a re-run.
     pinned_order : dict or list, optional
         Element id -> assembly index, or a list of element ids in assembly order.
-    strategy : :class:`~compas_timber_sequencing.preferences.PreferenceStrategy`, optional
+    strategy : :class:`~compas_timber_sequencing.ranking.context.PreferenceStrategy`, optional
     width : int, optional
         Beam width.
     distance : float, optional

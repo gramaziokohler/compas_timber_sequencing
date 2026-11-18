@@ -181,8 +181,8 @@ def test_the_swept_check_is_not_fooled_by_the_empty_corner_of_a_diagonal():
     adapter = TimberModelAdapter(model)
     active = set(str(element.guid) for element in (beam, brace))
 
-    from compas_timber_sequencing.collision import bounds_overlap
-    from compas_timber_sequencing.collision import swept_aabb
+    from compas_timber_sequencing.timber.collision import bounds_overlap
+    from compas_timber_sequencing.timber.collision import swept_aabb
 
     swept = swept_aabb(beam.obb, Vector(0, 0, 1), 100.0)
     assert bounds_overlap(swept, adapter._bounds(str(brace.guid))) is True, "the broad phase should be the one that is fooled"

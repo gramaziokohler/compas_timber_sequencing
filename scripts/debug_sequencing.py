@@ -28,9 +28,9 @@ from compas.data import json_load
 import compas_timber_sequencing
 from compas_timber_sequencing import extract
 from compas_timber_sequencing import rank_candidates
-from compas_timber_sequencing.constraints import HalfSpace
-from compas_timber_sequencing.constraints import SignedAxis
-from compas_timber_sequencing.solver import APPROACH_DISTANCE
+from compas_timber_sequencing.core.constraints import HalfSpace
+from compas_timber_sequencing.core.constraints import SignedAxis
+from compas_timber_sequencing.core.solver import APPROACH_DISTANCE
 from compas_timber_sequencing.timber import TimberModelAdapter
 
 
@@ -109,7 +109,7 @@ def explain_first_stuck_element(model, result, distance=APPROACH_DISTANCE):
     if not directions:
         # No constraints at all: the element is free, and the only direction the solver
         # ever proposes is straight up. If that is obstructed it is the sweep, full stop.
-        from compas_timber_sequencing.solver import FREE_DIRECTION
+        from compas_timber_sequencing.core.solver import FREE_DIRECTION
 
         directions = [(1.0, FREE_DIRECTION)]
 
@@ -131,9 +131,9 @@ def explain_first_stuck_element(model, result, distance=APPROACH_DISTANCE):
 
 def obstructions(adapter, element_id, direction, distance, active_ids):
     """Which elements the swept broad-phase says are in the way. Empty means clear."""
-    from compas_timber_sequencing.collision import bounds_overlap
-    from compas_timber_sequencing.collision import swept_aabb
     from compas_timber_sequencing.timber import _element_id
+    from compas_timber_sequencing.timber.collision import bounds_overlap
+    from compas_timber_sequencing.timber.collision import swept_aabb
 
     element = adapter.elements_by_id[element_id]
     swept = swept_aabb(element.obb, direction, distance)

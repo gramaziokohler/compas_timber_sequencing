@@ -97,6 +97,8 @@ docstring-code-line-length = "dynamic"
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["src", "tests"]
+# tests/synthetic.py holds the hand-built fixtures shared by tests/core and tests/ranking.
+pythonpath = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra --strict-markers --doctest-modules --tb=short"
 doctest_optionflags = "NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL ALLOW_UNICODE ALLOW_BYTES NUMBER"

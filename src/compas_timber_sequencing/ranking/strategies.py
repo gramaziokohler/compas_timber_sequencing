@@ -1,7 +1,7 @@
 """Injectable ranking strategies.
 
 Hard constraints filter; soft preferences rank. The feasibility filter in
-:mod:`compas_timber_sequencing.search` decides *whether* an element may be removed at a step;
+:mod:`compas_timber_sequencing.core.search` decides *whether* an element may be removed at a step;
 a strategy here decides only *which of the permitted ones* is preferred. Blending the two
 into one comparator, as a single lexicographic tuple of booleans and continuous values,
 means a constraint violation can be outvoted by an ordering accident.
@@ -31,69 +31,20 @@ is the sentence a fabricator cares about.
 
 The named terms the last two compose over are listed in :data:`TERMS`. There is no single
 best strategy: which one wins is a property of the model, which is why they are injectable
-and why :mod:`compas_timber_sequencing.compare` exists to score them side by side.
+and why :mod:`compas_timber_sequencing.ranking.compare` exists to score them side by side.
 
 """
 
 import math
 import zlib
 
-from .boundary import sort_key
-from .result import ROOMY
-
-
-class RankingContext(object):
-    """The state a strategy may score against.
-
-    Parameters
-    ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
-    active_ids : set
-        Elements still in place, before this step's removal.
-    last_removed : hashable or None
-        The element removed at the previous step.
-    subassemblies : dict
-        Element id -> subassembly label.
-    disconnecting : set
-        Elements whose removal would strand part of the assembly from the ground, from
-        :func:`~compas_timber_sequencing.blocking.disconnecting_elements`.
-    step_index : int
-
-    """
-
-    def __init__(self, sequencing_input, active_ids, last_removed, subassemblies, disconnecting, step_index):
-        self.input = sequencing_input
-        self.active_ids = active_ids
-        self.last_removed = last_removed
-        self.subassemblies = subassemblies
-        self.disconnecting = disconnecting
-        self.step_index = step_index
-
-
-class PreferenceStrategy(object):
-    """Base class for ranking strategies."""
-
-    name = "preference"
-
-    def score(self, context, element_id, solution):
-        """Score a candidate removal. Higher is better.
-
-        Parameters
-        ----------
-        context : :class:`RankingContext`
-        element_id : hashable
-        solution : :class:`~compas_timber_sequencing.result.Solution` or :class:`~compas_timber_sequencing.result.Locked`
-            The extraction result for this candidate in this state. Hand-placed elements
-            may carry a ``Locked``.
-
-        Returns
-        -------
-        tuple
-            A comparable tuple. All candidates at a step must return tuples of the same
-            shape.
-
-        """
-        raise NotImplementedError
+from ..core.boundary import sort_key
+from ..core.result import ROOMY
+from .context import PreferenceStrategy
+from .terms import TERMS
+from .terms import _Ranges
+from .terms import _resolve_terms
+from .terms import _term_stable
 
 
 class GravityStrategy(PreferenceStrategy):
@@ -105,7 +56,7 @@ class GravityStrategy(PreferenceStrategy):
        not a stability calculation, and the one term whose violation produces obvious
        nonsense -- so it leads.
     2. **Nothing jointed to it is still standing higher up**, from
-       :meth:`~compas_timber_sequencing.boundary.SequencingInput.above`. Comparing heights
+       :meth:`~compas_timber_sequencing.core.boundary.SequencingInput.above`. Comparing heights
        *within a step* is not the same as sorting by height: at any step the tallest
        element left may be kinematically blocked, and a comparator that only sorts by
        ``base_z`` then reaches straight past it and takes a post out from under a beam
@@ -118,7 +69,7 @@ class GravityStrategy(PreferenceStrategy):
        is carrying something -- an interlock, a blocked extraction overhead -- the search
        needs a sequence more than it needs this rule, so the term goes quiet and the
        height terms below decide. That fallback is visible: ``support_inversions`` in
-       :mod:`compas_timber_sequencing.compare` counts the times it fired.
+       :mod:`compas_timber_sequencing.ranking.compare` counts the times it fired.
     3. **base_z, then centroid_z**, both descending, as two separate lexicographic terms.
        Both carry real signal: centroid alone ranks a ground-standing post as "high",
        base alone cannot separate two beams that start at the same level. Summing them,
@@ -184,189 +135,6 @@ class HeuristicStrategy(PreferenceStrategy):
         return (float(self.function(element_id)),)
 
 
-class _Ranges(object):
-    """The min and max of each per-element quantity in one model.
-
-    Terms are normalized against these so that a height in millimetres and a length in
-    metres can appear in the same weighted sum without one drowning the other. The
-    normalization is per-model, so a term value is only comparable within one run.
-
-    """
-
-    def __init__(self, sequencing_input):
-        element_ids = sequencing_input.element_ids
-        self.spans = {
-            "base_z": _span(sequencing_input.base_z[i] for i in element_ids),
-            "centroid_z": _span(sequencing_input.centroid_z[i] for i in element_ids),
-            "length": _span(sequencing_input.length[i] for i in element_ids),
-            "degree": _span(sequencing_input.degree(i) for i in element_ids),
-        }
-
-    def unit(self, name, value):
-        """Map `value` onto 0..1 against the model's span for `name`.
-
-        Parameters
-        ----------
-        name : str
-        value : float
-
-        Returns
-        -------
-        float
-
-        """
-        return _unit(value, self.spans[name])
-
-
-def _span(values):
-    values = [float(value) for value in values]
-    if not values:
-        return (0.0, 0.0)
-    return (min(values), max(values))
-
-
-def _unit(value, span):
-    low, high = span
-    if high <= low:
-        # Every element carries the same value, so the term cannot separate anything.
-        # Returning a constant makes it inert and lets the next term decide, rather than
-        # dividing by zero or manufacturing an ordering out of nothing.
-        return 0.5
-    return (float(value) - low) / (high - low)
-
-
-def _term_stable(context, element_id, solution, ranges):
-    return 0.0 if element_id in context.disconnecting else 1.0
-
-
-def _term_clear_above(context, element_id, solution, ranges):
-    return 0.0 if context.input.above(element_id) & context.active_ids else 1.0
-
-
-def _term_base_z(context, element_id, solution, ranges):
-    return ranges.unit("base_z", context.input.base_z[element_id])
-
-
-def _term_centroid_z(context, element_id, solution, ranges):
-    return ranges.unit("centroid_z", context.input.centroid_z[element_id])
-
-
-def _term_length(context, element_id, solution, ranges):
-    return ranges.unit("length", context.input.length[element_id])
-
-
-def _term_degree(context, element_id, solution, ranges):
-    return ranges.unit("degree", context.input.degree(element_id))
-
-
-def _term_roomy(context, element_id, solution, ranges):
-    return 1.0 if solution.state == ROOMY else 0.0
-
-
-def _term_margin(context, element_id, solution, ranges):
-    if not solution.is_feasible:
-        # A Locked result reaches ranking only for hand-placed elements, and its margin is
-        # NaN by design. NaN in a sort key compares false against everything and would
-        # silently scramble the order, so it is mapped to the worst finite value here.
-        return 0.0
-    margin = solution.margin
-    if margin != margin:
-        return 0.0
-    return max(0.0, min(1.0, margin))
-
-
-def _term_certain(context, element_id, solution, ranges):
-    return 0.0 if solution.inferred_count else 1.0
-
-
-def _term_subassembly(context, element_id, solution, ranges):
-    if context.last_removed is None:
-        return 0.0
-    return 1.0 if context.subassemblies.get(element_id) == context.subassemblies.get(context.last_removed) else 0.0
-
-
-def _term_chain(context, element_id, solution, ranges):
-    if context.last_removed is None:
-        return 0.0
-    return 1.0 if context.last_removed in context.input.neighbors[element_id] else 0.0
-
-
-def _term_locality(context, element_id, solution, ranges):
-    if context.last_removed is None:
-        return 0.5
-    neighbor_ids = context.input.neighbors[element_id]
-    if context.last_removed in neighbor_ids:
-        return 1.0
-    if neighbor_ids & context.input.neighbors[context.last_removed]:
-        return 0.5
-    return 0.0
-
-
-def _term_freed(context, element_id, solution, ranges):
-    neighbor_ids = context.input.neighbors[element_id]
-    if not neighbor_ids:
-        return 1.0
-    return float(len(neighbor_ids - set(context.active_ids))) / float(len(neighbor_ids))
-
-
-TERMS = {
-    "base_z": _term_base_z,
-    "centroid_z": _term_centroid_z,
-    "certain": _term_certain,
-    "chain": _term_chain,
-    "clear_above": _term_clear_above,
-    "degree": _term_degree,
-    "freed": _term_freed,
-    "length": _term_length,
-    "locality": _term_locality,
-    "margin": _term_margin,
-    "roomy": _term_roomy,
-    "stable": _term_stable,
-    "subassembly": _term_subassembly,
-}
-"""dict: The named ranking terms, each ``f(context, element_id, solution, ranges) -> float``.
-
-Every term returns a value on 0..1 where **higher means removed earlier in disassembly**,
-which is *later* in assembly. Read every term below in that direction; the assembly
-consequence is the mirror image.
-
-===============  ========================================================================
-``stable``       1.0 unless removing this element would strand something from the ground.
-``clear_above``  1.0 unless a jointed neighbour whose base sits higher is still in place.
-``base_z``       Height of the element's lowest point, normalized over the model.
-``centroid_z``   Height of the element's centroid, normalized over the model.
-``length``       Element length, normalized over the model.
-``degree``       Number of jointed neighbours, normalized. Negate for peripheral-first.
-``roomy``        1.0 for a comfortable clearance, 0.0 for a zero-clearance slot.
-``margin``       The clearance angle's sine, a continuous version of ``roomy``.
-``certain``      1.0 when no constraint behind this result came from a generic fallback.
-``subassembly``  1.0 when the element is in the same cluster as the last one removed.
-``chain``        1.0 when the element is jointed to the last one removed.
-``locality``     1.0 if jointed to the last removed, 0.5 if two hops away, else 0.0.
-``freed``        Fraction of this element's neighbours that are already gone.
-===============  ========================================================================
-
-Prefix a name with ``-`` to invert it: ``"-degree"`` prefers peripheral elements,
-``"-length"`` prefers short ones.
-
-"""
-
-
-def _resolve_terms(names):
-    """Turn term names, optionally ``-``-prefixed, into ``(sign, function)`` pairs."""
-    resolved = []
-    for name in names:
-        sign = 1.0
-        key = name
-        if key.startswith("-"):
-            sign = -1.0
-            key = key[1:]
-        if key not in TERMS:
-            raise ValueError("Unknown ranking term {!r}. Known terms: {}.".format(name, ", ".join(sorted(TERMS))))
-        resolved.append((sign, TERMS[key]))
-    return resolved
-
-
 class TermStrategy(PreferenceStrategy):
     """Rank lexicographically by a named list of terms.
 
@@ -412,7 +180,7 @@ class TermStrategy(PreferenceStrategy):
 
         Parameters
         ----------
-        sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+        sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
 
         Returns
         -------
@@ -431,7 +199,7 @@ class TermStrategy(PreferenceStrategy):
         ----------
         context : :class:`RankingContext`
         element_id : hashable
-        solution : :class:`~compas_timber_sequencing.result.Solution` or :class:`~compas_timber_sequencing.result.Locked`
+        solution : :class:`~compas_timber_sequencing.core.result.Solution` or :class:`~compas_timber_sequencing.core.result.Locked`
 
         Returns
         -------
@@ -492,7 +260,7 @@ class SubassemblyStrategy(TermStrategy):
 
     For prefabrication: it produces a sequence that can be cut at cluster boundaries into
     separately buildable panels or trusses. Declared groups win over inferred clusters in
-    :func:`~compas_timber_sequencing.blocking.subassemblies`, so this is also the strategy that
+    :func:`~compas_timber_sequencing.core.blocking.subassemblies`, so this is also the strategy that
     follows a user's own grouping most directly.
 
     """
@@ -594,7 +362,7 @@ class LayeredStrategy(TermStrategy):
         ----------
         context : :class:`RankingContext`
         element_id : hashable
-        solution : :class:`~compas_timber_sequencing.result.Solution` or :class:`~compas_timber_sequencing.result.Locked`
+        solution : :class:`~compas_timber_sequencing.core.result.Solution` or :class:`~compas_timber_sequencing.core.result.Locked`
 
         Returns
         -------
@@ -658,7 +426,7 @@ class WeightedStrategy(PreferenceStrategy):
         ----------
         context : :class:`RankingContext`
         element_id : hashable
-        solution : :class:`~compas_timber_sequencing.result.Solution` or :class:`~compas_timber_sequencing.result.Locked`
+        solution : :class:`~compas_timber_sequencing.core.result.Solution` or :class:`~compas_timber_sequencing.core.result.Locked`
 
         Returns
         -------
@@ -713,7 +481,7 @@ class RandomStrategy(PreferenceStrategy):
         ----------
         context : :class:`RankingContext`
         element_id : hashable
-        solution : :class:`~compas_timber_sequencing.result.Solution` or :class:`~compas_timber_sequencing.result.Locked`
+        solution : :class:`~compas_timber_sequencing.core.result.Solution` or :class:`~compas_timber_sequencing.core.result.Locked`
 
         Returns
         -------
@@ -765,25 +533,3 @@ def make_strategy(name, **kwargs):
     if name not in STRATEGIES:
         raise ValueError("Unknown strategy {!r}. Known strategies: {}.".format(name, ", ".join(sorted(STRATEGIES))))
     return STRATEGIES[name](**kwargs)
-
-
-def rank(context, candidates, strategy):
-    """Order candidate removals, best first.
-
-    Parameters
-    ----------
-    context : :class:`RankingContext`
-    candidates : dict
-        Element id -> extraction result.
-    strategy : :class:`PreferenceStrategy`
-
-    Returns
-    -------
-    list of tuple
-        ``(score, element_id)`` pairs, best first. The element id is appended to the sort
-        key so that equal scores resolve the same way on every run.
-
-    """
-    scored = [(strategy.score(context, element_id, result), element_id) for element_id, result in candidates.items()]
-    scored.sort(key=lambda item: (item[0], sort_key(item[1])), reverse=True)
-    return scored

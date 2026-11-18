@@ -104,43 +104,50 @@ long as any one of them is.
 ## How it works
 
 ```
-TimberModel ──► timber.py (adapter) ──► SequencingInput ──► search.generate() ──► SequenceResult ──► element.attributes
-                    │                     (plain data +                │
-                    └── kinematics/ ◄──── constraints callback)       ├── blocking.py    locked in every order?
-                        (per-joint freedom)                           ├── solver.py      can this element move now?
-                                                                      └── preferences.py which movable one first?
+TimberModel ──► timber/adapter.py ──► SequencingInput ──► core/search.py ──► SequenceResult ──► element.attributes
+                    │                   (plain data +              │                                  (timber/attributes.py)
+                    └── kinematics/ ◄── constraints callback)     ├── core/blocking.py  locked in every order? (once, up front)
+                        (per-joint freedom)                       ├── core/solver.py    can this element move right now?
+                                                                  └── ranking/          which movable one goes first?
 ```
 
-1. **Adapter** (`timber.py`). Reads the beams (every other element is excluded), their
+1. **Adapter** (`timber/adapter.py`). Reads the beams (every other element is excluded), their
    joints, centerline heights and lengths, and turns them into a `SequencingInput`: plain ids
    and numbers, plus two callbacks. One gives the constraints on an element from its joints that
    still have a member in place, via `kinematic_constraint`. The other sweeps the element's
    bounding box 100 model units along a direction and checks for collisions with the elements it
    is not jointed to.
-2. **Locked in every order** (`blocking.py`). A pair is an edge when the joint alone locks one
+2. **Locked in every order** (`core/blocking.py`). A pair is an edge when the joint alone locks one
    member. Cycles of such edges can never come apart, so they are placed by hand.
-3. **Search** (`search.py`). Disassembly, carrying the 5 best partial orders. At each step every
-   remaining element is solved against what is still in place (`solver.py`: the direction with
+3. **Search** (`core/search.py`). Disassembly, carrying the 5 best partial orders. At each step every
+   remaining element is solved against what is still in place (`core/solver.py`: the direction with
    the most clearance inside the cone its joints allow, which also has to pass the collision
-   check). The movable ones are ranked by a strategy (`preferences.py`), which by default keeps
+   check). The movable ones are ranked by a strategy (`ranking/`), which by default keeps
    the structure connected to the ground, takes nothing out from under something jointed above
    it, and goes top-down.
 4. **Result.** Reversed into an assembly order, with the extraction vectors negated into
    insertion vectors, a roomy/tight state and clearance angle per element, the hand-placement
    set, and structured reports for dead ends, unhonourable pins and stale overrides.
 
-| Module | Needs `compas_timber` | Role |
+| Folder / module | Imports `compas_timber` | Role |
 |---|---|---|
+| `core/boundary.py` | no | `SequencingInput`, everything the algorithms may know |
+| `core/constraints.py` | no | `HalfSpace`, `SignedAxis` |
+| `core/solver.py` | no | One element, one state: `Solution` or `Locked` |
+| `core/blocking.py` | no | Intrinsic locks, ground connectivity, subassemblies |
+| `core/search.py` | no | Beam search; `generate()` |
+| `core/result.py`, `core/trace.py` | no | Result types; opt-in tracing (`set_tracer`) |
+| `ranking/context.py` | no | What a strategy is given (`RankingContext`), the strategy base class, `rank()` |
+| `ranking/terms.py` | no | The named ranking terms (`stable`, `clear_above`, `base_z`, ...) |
+| `ranking/strategies.py` | no | `gravity`, `layered`, `clearance`, `skeleton`, `subassembly`, `chain`, `random`, and custom strategies |
+| `ranking/compare.py` | no | Scores several strategies on one model, side by side |
 | `kinematics/` | yes | Per-joint freedom: one module per `compas_timber` joint module, explicit registry by exact joint class |
-| `timber.py` | yes | Model ⇄ `SequencingInput`; writes the result into `element.attributes` |
-| `boundary.py` | no | `SequencingInput`, everything the algorithms may know |
-| `constraints.py` | no | `HalfSpace`, `SignedAxis` |
-| `solver.py` | no | One element, one state: `Solution` or `Locked` |
-| `blocking.py` | no | Intrinsic locks, ground connectivity, subassemblies |
-| `search.py` | no | Beam search; `generate()` |
-| `preferences.py` | no | Ranking strategies (`gravity`, `layered`, `clearance`, `skeleton`, `subassembly`, `chain`, `random`) |
-| `compare.py` | no | Scores several strategies on one model, side by side |
-| `result.py`, `trace.py` | no | Result types; opt-in tracing (`set_tracer`) |
+| `timber/adapter.py` | yes | `TimberModel` → `SequencingInput`; `generate_assembly_sequence()` |
+| `timber/attributes.py` | yes | Writes the result into `element.attributes`; `assembly_order()` reads it back |
+| `timber/collision.py` | no | The swept-box collision test the adapter uses (pure `compas` geometry) |
+
+`core/` and `ranking/` never import `compas_timber`, `kinematics/` or `timber/`; `tests/test_layering.py`
+enforces it. Everything public can also be imported from the package root.
 
 More:
 
@@ -167,15 +174,17 @@ It writes only `element.attributes`: `assembly_sequence`, `insertion_vector`,
 ## Development
 
 ```bash
-pip install -e ".[timber,dev]"
+pip install -e ".[dev]"
 pytest
 ruff check . && ruff format --check .
 ```
 
-`tests/core` exercises the algorithms on hand-built synthetic inputs and needs only `compas`.
-`tests/timber` covers the joint kinematics and runs the adapter on real `compas_timber` models. It
-includes a regression test against the results the sequencer produced before it moved out of
-`compas_timber`.
+The tests mirror the package. `tests/core` and `tests/ranking` exercise the algorithms on the
+hand-built inputs in `tests/synthetic.py`. `tests/kinematics` checks every joint's constraints, and that
+every beam joint in `compas_timber` is either implemented or knowingly left out. `tests/timber` runs the
+adapter and the collision test on real models, and includes a regression test against the results the
+sequencer produced before it moved out of `compas_timber`. `tests/test_layering.py` enforces which
+folders may import `compas_timber`.
 
 ## Origin
 

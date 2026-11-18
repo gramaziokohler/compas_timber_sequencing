@@ -266,7 +266,7 @@
   <ul>
     <li><b>The algorithms</b> &mdash; cones, graphs, search. Depend on <code>compas.geometry</code> and nothing else. No numpy, no scipy, Python 3.9 syntax so it runs under Rhino's CPython.</li>
     <li><b><code>kinematics/</code></b> &mdash; <code>kinematic_constraint(joint, element)</code>, the per-joint input, looked up in an explicit registry by the joint's exact class, one module per <code>compas_timber</code> joint module. It reads each joint's planes, reference sides and parameters.</li>
-    <li><b><code>timber.py</code></b> &mdash; the adapter: reads beams, joints and geometry from a <code>TimberModel</code>, builds the input, and writes the result back into <code>element.attributes</code>.</li>
+    <li><b><code>timber/</code></b> &mdash; the adapter: reads beams, joints and geometry from a <code>TimberModel</code>, builds the input, and writes the result back into <code>element.attributes</code>.</li>
   </ul>
 
   <p>The dependency runs one way only: <code>compas_timber_sequencing</code> reads <code>compas_timber</code>, and <code>compas_timber</code> never imports it back. <code>compas_timber</code> needs no changes to be sequenced.</p>
@@ -298,7 +298,7 @@
         <text x="91" y="208" text-anchor="middle" class="svg-small">planes, ref sides</text>
 
         <rect x="214" y="46" width="170" height="50" rx="3" class="svg-box"/>
-        <text x="299" y="70" text-anchor="middle" class="svg-label">timber.py adapter</text>
+        <text x="299" y="70" text-anchor="middle" class="svg-label">timber/ adapter</text>
         <text x="299" y="86" text-anchor="middle" class="svg-small">beams, joints, geometry</text>
 
         <rect x="214" y="168" width="128" height="50" rx="3" class="svg-box"/>
@@ -892,7 +892,7 @@ result.describe()         # human-readable, per element</code></pre>
 </section>
 
 <footer>
-  <p>Source: <code>src/compas_timber_sequencing/</code>, with the adapter in <code>src/compas_timber_sequencing/timber.py</code>. The design is in <code>docs/spec.md</code>; the original rationale and work breakdown in <code>docs/plan.md</code>.</p>
+  <p>Source: <code>src/compas_timber_sequencing/</code>, in four folders &mdash; <code>core/</code> and <code>ranking/</code> (the algorithms), <code>kinematics/</code> and <code>timber/</code> (everything that reads <code>compas_timber</code>). The design is in <code>docs/spec.md</code>; the original rationale and work breakdown in <code>docs/plan.md</code>.</p>
 </footer>
 
 </main>

@@ -192,7 +192,7 @@ class SequencingInput(object):
 
         Returns
         -------
-        list of :class:`compas_timber_sequencing.constraints.Constraint`
+        list of :class:`compas_timber_sequencing.core.constraints.Constraint`
 
         """
         return list(self._constraints_fn(element_id, set(active_neighbor_ids)))

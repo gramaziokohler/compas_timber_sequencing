@@ -11,6 +11,9 @@ alternative sequences" nearly free -- which the override workflow wants anyway.
 
 """
 
+from ..ranking.context import RankingContext
+from ..ranking.context import rank
+from ..ranking.strategies import GravityStrategy
 from .blocking import build_blocking_graph
 from .blocking import disconnecting_elements
 from .blocking import extract
@@ -18,9 +21,6 @@ from .blocking import ground_ids
 from .blocking import intrinsic_locks
 from .blocking import subassemblies as compute_subassemblies
 from .boundary import sort_key
-from .preferences import GravityStrategy
-from .preferences import RankingContext
-from .preferences import rank
 from .result import TIGHT
 from .result import PinConflict
 from .result import SequenceResult
@@ -84,15 +84,15 @@ def beam_search(
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     manual_set : set, optional
         Elements exempt from the feasibility filter. A human can rotate, tilt and spring
         a member into place, so robot kinematics do not apply to them.
     pins : dict, optional
         Maps **disassembly step index** -> element id that must be removed at that step.
         :func:`generate` converts the caller's assembly-order pins into this form.
-    strategy : :class:`~compas_timber_sequencing.preferences.PreferenceStrategy`, optional
-        Defaults to :class:`~compas_timber_sequencing.preferences.GravityStrategy`.
+    strategy : :class:`~compas_timber_sequencing.ranking.context.PreferenceStrategy`, optional
+        Defaults to :class:`~compas_timber_sequencing.ranking.strategies.GravityStrategy`.
     subassemblies : dict, optional
         Element id -> label, for the continuity term in ranking.
     width : int, optional
@@ -285,7 +285,7 @@ def generate(
 
     Parameters
     ----------
-    sequencing_input : :class:`~compas_timber_sequencing.boundary.SequencingInput`
+    sequencing_input : :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
     manual_set : iterable, optional
         Elements the user has declared hand-placed. Exempt from the feasibility filter.
         This is a fact about the design, so the caller should persist it with the model.
@@ -293,14 +293,14 @@ def generate(
         Either element id -> assembly index, or a list of element ids in assembly order.
         A fact about a particular build, so it is supplied per run rather than stored.
         Pins win: an unhonourable pin is reported, never silently reordered around.
-    strategy : :class:`~compas_timber_sequencing.preferences.PreferenceStrategy`, optional
+    strategy : :class:`~compas_timber_sequencing.ranking.context.PreferenceStrategy`, optional
     width : int, optional
     distance : float, optional
         Approach distance for the swept broad-phase check.
 
     Returns
     -------
-    :class:`~compas_timber_sequencing.result.SequenceResult`
+    :class:`~compas_timber_sequencing.core.result.SequenceResult`
 
     """
     staleness = StalenessReport()
