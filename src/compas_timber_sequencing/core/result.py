@@ -182,7 +182,7 @@ class StalenessReport(object):
         Parameters
         ----------
         kind : str
-            ``"manual"`` or ``"pin"``.
+            ``"manual"``, ``"pin"`` or ``"before"``.
         element_id : hashable
         message : str
 

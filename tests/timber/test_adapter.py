@@ -125,7 +125,7 @@ def test_mortise_tenon_is_a_strict_one_dof_constraint():
 
 def test_the_adapter_flattens_a_model(portal):
     model, post_west, post_east, top = portal
-    data = TimberModelAdapter(model).build()
+    data = TimberModelAdapter(model, key="guid").build()
 
     assert len(data.element_ids) == 3
     assert data.neighbors[str(top.guid)] == {str(post_west.guid), str(post_east.guid)}
@@ -135,7 +135,7 @@ def test_the_adapter_flattens_a_model(portal):
 
 def test_the_adapter_measures_height_and_length_from_the_centerline(portal):
     model, post_west, _, top = portal
-    data = TimberModelAdapter(model).build()
+    data = TimberModelAdapter(model, key="guid").build()
 
     assert data.base_z[str(post_west.guid)] == pytest.approx(0.0)
     assert data.centroid_z[str(post_west.guid)] == pytest.approx(1000.0)
@@ -145,7 +145,7 @@ def test_the_adapter_measures_height_and_length_from_the_centerline(portal):
 
 def test_the_adapter_supplies_a_swept_check_by_default(portal):
     model, _, _, _ = portal
-    assert TimberModelAdapter(model).build().has_geometry is True
+    assert TimberModelAdapter(model, key="guid").build().has_geometry is True
     assert TimberModelAdapter(model, use_geometry=False).build().has_geometry is False
 
 
@@ -161,7 +161,7 @@ def test_the_swept_check_sees_an_element_standing_in_the_way():
     model.add_element(mover)
     model.add_element(blocker)
 
-    adapter = TimberModelAdapter(model)
+    adapter = TimberModelAdapter(model, key="guid")
     active = set(str(element.guid) for element in (mover, blocker))
     assert adapter.path_is_clear(str(mover.guid), Vector(0, 0, 1), 1000.0, active) is False
     assert adapter.path_is_clear(str(mover.guid), Vector(0, 0, -1), 1000.0, active) is True
@@ -178,7 +178,7 @@ def test_the_swept_check_is_not_fooled_by_the_empty_corner_of_a_diagonal():
     model.add_element(beam)
     model.add_element(brace)
 
-    adapter = TimberModelAdapter(model)
+    adapter = TimberModelAdapter(model, key="guid")
     active = set(str(element.guid) for element in (beam, brace))
 
     from compas_timber_sequencing.timber.collision import bounds_overlap
@@ -196,7 +196,7 @@ def test_the_swept_check_stops_short_of_something_further_than_the_approach():
     model.add_element(mover)
     model.add_element(far)
 
-    adapter = TimberModelAdapter(model)
+    adapter = TimberModelAdapter(model, key="guid")
     active = set(str(element.guid) for element in (mover, far))
     assert adapter.path_is_clear(str(mover.guid), Vector(0, 0, 1), 100.0, active) is True
     assert adapter.path_is_clear(str(mover.guid), Vector(0, 0, 1), 6000.0, active) is False
@@ -211,7 +211,7 @@ def test_elements_that_are_not_beams_are_excluded_and_reported():
     other = Element()
     model.add_element(other)
 
-    data = TimberModelAdapter(model).build()
+    data = TimberModelAdapter(model, key="guid").build()
     assert data.element_ids == [str(beam.guid)]
     assert str(other.guid) in data.excluded
     assert "beams only" in data.excluded[str(other.guid)]
@@ -247,7 +247,7 @@ def test_every_sequenced_element_gets_a_unit_insertion_vector(portal):
 
 def test_the_sequence_is_written_onto_the_model(portal):
     model, _, _, top = portal
-    generate_assembly_sequence(model)
+    generate_assembly_sequence(model, apply_to_model=True)
 
     assert top.attributes[SEQUENCE_ATTRIBUTE] == 2
     assert top.attributes[VECTOR_ATTRIBUTE] is not None
@@ -257,13 +257,13 @@ def test_the_sequence_is_written_onto_the_model(portal):
 
 def test_assembly_order_lists_the_sequenced_elements_in_order(portal):
     model, _, _, _ = portal
-    result, adapter = generate_assembly_sequence(model)
+    result, adapter = generate_assembly_sequence(model, apply_to_model=True)
     assert assembly_order(model) == ids_to_beams(result, adapter)
 
 
 def test_the_sequence_survives_a_json_round_trip(portal):
     model, _, _, _ = portal
-    generate_assembly_sequence(model)
+    generate_assembly_sequence(model, apply_to_model=True)
     before = [str(element.guid) for element in assembly_order(model)]
 
     restored = json_loads(json_dumps(model))
@@ -280,21 +280,27 @@ def test_a_real_model_sequences_the_same_way_twice(portal):
     assert first.order == second.order
 
 
-def test_the_hand_placement_set_round_trips_through_element_attributes(portal):
+def test_hand_placed_elements_are_honoured_and_written_when_applied(portal):
     model, post_west, _, _ = portal
     # A fact about the design, so it is persisted on the element and picked up on re-run.
-    post_west.attributes[MANUAL_ATTRIBUTE] = True
-
-    result, _ = generate_assembly_sequence(model)
+    result, _ = generate_assembly_sequence(model, manual_set={str(post_west.guid)}, key="guid", apply_to_model=True)
     assert str(post_west.guid) in result.manual_set
     assert post_west.attributes[MANUAL_ATTRIBUTE] is True
 
 
-def test_an_explicit_manual_set_overrides_the_persisted_one(portal):
+def test_attributes_on_the_model_are_not_read_back_as_input(portal):
     model, post_west, _, _ = portal
+    # Hand placement is an explicit input (manual_set, or SequenceOverrides for plans); a flag
+    # left on an element by an earlier run must not silently change the next one.
     post_west.attributes[MANUAL_ATTRIBUTE] = True
-    result, _ = generate_assembly_sequence(model, manual_set=set())
+    result, _ = generate_assembly_sequence(model, key="guid")
     assert str(post_west.guid) not in result.manual_set
+
+
+def test_the_model_is_not_changed_unless_asked(portal):
+    model, _, _, _ = portal
+    generate_assembly_sequence(model)
+    assert all(SEQUENCE_ATTRIBUTE not in beam.attributes for beam in model.beams)
 
 
 def test_sequencing_without_geometry_still_works(portal):
@@ -307,7 +313,7 @@ def test_sequencing_without_geometry_still_works(portal):
 def test_a_pinned_order_is_honoured_on_a_real_model(portal):
     model, post_west, post_east, top = portal
     wanted = [str(post_east.guid), str(post_west.guid), str(top.guid)]
-    result, _ = generate_assembly_sequence(model, pinned_order=wanted)
+    result, _ = generate_assembly_sequence(model, pinned_order=wanted, key="guid")
     assert result.is_complete
     assert result.order == wanted
 
@@ -317,6 +323,6 @@ def test_an_unjointed_beam_is_free_rather_than_locked():
     model = TimberModel()
     beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), WIDTH, HEIGHT)
     model.add_element(beam)
-    result, _ = generate_assembly_sequence(model)
+    result, _ = generate_assembly_sequence(model, key="guid")
     assert result.is_complete
     assert result.insertion_vectors[str(beam.guid)] is not None

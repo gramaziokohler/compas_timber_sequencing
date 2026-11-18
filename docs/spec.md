@@ -26,8 +26,9 @@ TimberModel ──► timber/adapter.py ──► SequencingInput ──► core
 3. A beam search takes the model apart one element at a time (§6). At each step every remaining
    element is solved (§4), the movable ones are ranked by a strategy (§7), and the best few
    partial orders are carried forward.
-4. The disassembly order is reversed and the extraction vectors negated, and the result is
-   written into each element's `attributes` (§11).
+4. The disassembly order is reversed and the extraction vectors negated. The result is a
+   `SequencePlan` keyed by stable element keys; it is written into the elements' `attributes`
+   only when asked (§8, §11).
 
 ---
 
@@ -442,27 +443,70 @@ such a rule would override the geometry the solver computes.
 
 ---
 
-## 8. Overrides
+## 8. Plans, overrides and iteration
 
-`generate(input, manual_set, pinned_order)` is idempotent and re-runnable.
+A design is sequenced, looked at, adjusted and sequenced again, often many times, on a model
+that is rebuilt from scratch each time -- by a Grasshopper recompute, or by a script run. Four
+pieces make that loop work.
 
-1. The solver proposes a manual set: intrinsic locks, plus tight fits as candidates
-   (`SequenceResult.proposed_manual_set`).
-2. The user amends it.
-3. Re-run with the amended set as a given.
+**Stable keys** (`timber/keys.py`). A `guid` changes on every rebuild, so nothing that has to
+survive one uses it. An element's key is its name, when the name is set, is not the class
+default (`"Beam"`) and is unique in the model; otherwise, for a beam, a short hash of its
+centerline end points (in either order) and its section, rounded to a tolerance (1 model unit by
+default). Two unnamed beams that cannot be told apart raise an error rather than being merged.
+The keys are also the ids the search runs on, and the search breaks ties by id, so an unchanged
+design gives the same sequence on every rebuild. Naming beams makes keys survive moving them, and
+makes plans and overrides readable.
 
-Elements in the manual set are exempt from the feasibility filter — a human can rotate, tilt
-and spring a member into place, so robot kinematics do not apply to them.
+**`SequencePlan`** (`timber/plan.py`). `plan_sequence(model, overrides)` returns the sequence
+as data of its own and leaves the model untouched. A plan holds, by key: the order with absolute
+positions, and per element the insertion vector, fit, clearance angle, hand placement and how
+many constraints came from the fallback; the elements left unplaced, intrinsic locks, exclusions,
+stuck and pin-conflict reports and stale overrides; a copy of the overrides and the settings it
+was made with; and a fingerprint of every beam's geometry and joints. It saves to and loads from
+JSON like any COMPAS data object (`plan.to_json(path)`, `SequencePlan.from_json(path)`).
 
-**Persistence.** The manual set is a fact about the design, so it lives in the element
-attribute `requires_manual_assembly` and is serialized with the model; the adapter reads it
-back on the next run. Pinned order is a fact about a particular build and is supplied per
-run by the caller.
+**`SequenceOverrides`** (`core/overrides.py`). How a person adjusts a sequence, recorded as
+intent rather than positions, by key:
 
-**Staleness.** When the model changes under an override — a pinned element deleted, a
-position out of range, two pins on one position, an override on an excluded element — a
-`StalenessReport` lists every override that no longer applies. A fabrication instruction
-someone typed is never dropped without saying so.
+| Method | Records | Survives elements being added or removed |
+|---|---|---|
+| `place_before(a, b)`, `place_after(b, a)` | `a` is assembled before `b` | yes |
+| `keep_order(plan, start, until)` | that stretch of a plan, as a chain of precedences | yes |
+| `place_by_hand(key)` | exempt from the kinematic check | yes |
+| `pin(key, position)` | an absolute position; negative counts from the end | no |
+| `use_strategy(name)` | the ranking strategy | yes |
+| `forget(key)` | drops everything said about one element | -- |
+
+Precedences, pins and hand placement are hard constraints: the search never trades them off
+against its ranking. Contradicting precedences (`a` before `b` before `a`) raise immediately and
+name the cycle. An order the kinematics cannot honour ends in a stuck report whose reasons name
+the precedence that blocked ("must be assembled before brace, still in place"). Overrides are
+plain data: methods write them, JSON stores them.
+
+Elements in the hand-placement set are exempt from the feasibility filter -- a human can rotate,
+tilt and spring a member into place, so robot kinematics do not apply to them. The solver
+proposes a set (`plan.proposed_by_hand`: intrinsic locks, plus tight fits as candidates); the user
+decides with `place_by_hand`.
+
+**Staleness.** An override naming an element that is no longer sequenced -- deleted, excluded, a
+pin out of range, two pins on one position -- is reported in `plan.staleness` and dropped. A
+fabrication instruction someone typed is never dropped without saying so.
+
+**Checking and comparing.** `plan.check(model)` says how a plan relates to a model, by key and
+fingerprint: elements missing, new, or with changed geometry or joints. `diff(old, new)` compares
+two plans: elements added, removed and moved, insertion vectors that turned (with the angle),
+changes of fit and of hand placement, beams whose geometry or joints changed, and whether the
+overrides differ. `apply_plan(model, plan)` writes a plan onto a model -- matched by key, so it
+works on a rebuild -- for export.
+
+```
+model ──► plan_sequence(model, overrides) ──► plan ──► look: plan.describe(), plan.stuck
+  ▲                                                        │
+  │                                                        ▼
+  └── change the design ◄── or ──► adjust overrides ──► plan_sequence ──► diff(plan, new)
+when happy:  apply_plan(model, plan)  ──►  element.attributes  ──►  export, robot planning
+```
 
 ---
 
@@ -485,7 +529,6 @@ someone typed is never dropped without saying so.
 - **The `clearance` strategy is sensitive to the last bit of the geometry** (§7.1). Moving
   from `compas_timber` 2.x to 3.0 changed the constraint normals by at most 2.2e-16 and flipped
   near-ties on one test model; every other input was bit-identical.
-- **A stuck run writes misleading indices** (§11).
 
 ---
 
@@ -506,10 +549,10 @@ imports it. `compas_timber` needs no changes to be sequenced.
 | two joint types, privately | `ISimpleScarf._get_beam_side()`, `TBirdsmouthJoint._get_cutting_planes()` | `kinematics/` |
 | helpers | `compas_timber.fabrication.StepShapeType`, `compas_timber.connections.utilities.beam_ref_side_incidence` | `kinematics/` |
 
-**What is written.** Only `element.attributes`, and only when `apply_to_model=True` (§11).
+**What is written.** Only `element.attributes`, and only by `apply_plan` (or `apply_to_model=True` on the lower-level call); see §11.
 
 **How the coupling is contained.** None of the joint attributes above is a documented API, and
-two are private. The `timber` extra pins `compas_timber >=3.0,<4`, so a major release cannot
+two are private. The dependency is pinned to `compas_timber >=3.0,<4`, so a major release cannot
 break this silently, and `.github/workflows/nightly.yml` runs the whole suite against
 `compas_timber`'s main branch every night, so a rename shows up within a day.
 
@@ -518,46 +561,52 @@ break this silently, and `.github/workflows/nightly.yml` runs the whole suite ag
 ## 11. Usage
 
 ```python
-from compas_timber_sequencing.timber import assembly_order
-from compas_timber_sequencing.timber import generate_assembly_sequence
+from compas_timber_sequencing import SequenceOverrides, apply_plan, diff, plan_sequence
 
-result, adapter = generate_assembly_sequence(model)
+plan = plan_sequence(model)                      # model: a compas_timber TimberModel; not changed
+print(plan.describe())
+if not plan.is_complete:
+    print(plan.stuck)
 
-if not result.is_complete:
-    print(result.stuck.describe())
+for key in plan.order:
+    position = plan.position(key)                # absolute, from 0
+    vector = plan.insertion_vector(key)          # unit Vector; None => locked, place by hand
+    state = plan.state(key)                      # roomy | tight | locked
 
-for index, element_id in enumerate(result.order):
-    beam = adapter.elements_by_id[element_id]
-    vector = result.insertion_vectors[element_id]   # None => place by hand
-    state = result.state(element_id)                # roomy | tight | locked
+overrides = SequenceOverrides().place_before("strut", "bottom rail")
+adjusted = plan_sequence(model, overrides)
+print(diff(plan, adjusted).describe())
+adjusted.to_json("plan.json")
+
+check = apply_plan(model, adjusted)              # write it onto the elements, for export
 ```
 
-`generate_assembly_sequence(model, ...)` takes:
+`plan_sequence(model, ...)` takes:
 
 | Argument | Default | Meaning |
 |---|---|---|
-| `manual_set` | read from the elements | Element ids (`str(element.guid)`) to place by hand. |
-| `pinned_order` | none | Element id → assembly index, or a list of ids in assembly order. |
-| `strategy` | `GravityStrategy()` | Any strategy from §7, e.g. `make_strategy("clearance")`. |
+| `overrides` | none | A `SequenceOverrides`: precedences, pins, hand placement, strategy (§8). |
+| `strategy` | gravity | Any strategy from §7, e.g. `make_strategy("clearance")`; overrides `overrides.strategy`. |
 | `width` | 5 | How many partial orders the search carries forward. |
 | `distance` | 100.0 | Swept-check approach distance, in model units. |
 | `use_geometry` | `True` | Run the swept check; `False` trusts the joints alone. |
-| `apply_to_model` | `True` | Write the result into the element attributes. |
+| `tolerance` | 1.0 | Rounding for geometric keys and fingerprints, in model units. |
 
-It returns `(result, adapter)`; `adapter.elements_by_id` turns ids back into elements and
-`adapter.excluded` says what was left out and why.
-
-**What is written.** For each element in `result.order`: `assembly_sequence` (its index),
-`insertion_vector` (a unit `Vector`, or `None` when hand-placed), `requires_manual_assembly`
-and `extraction_state` (`roomy`, `tight` or `locked`), all in `element.attributes`, which
+**What is written, by `apply_plan`.** Every beam's earlier sequence attributes are cleared
+first. Then each placed element gets `assembly_sequence` (its absolute position),
+`insertion_vector` (a unit `Vector`, or `None` when locked), `requires_manual_assembly` and
+`extraction_state` (`roomy`, `tight` or `locked`), all in `element.attributes`, which
 `compas_timber` serializes with the element. `assembly_order(model)` reads them back as the
-elements in assembly order. On the next run `requires_manual_assembly` is read back as the
-manual set, so an amended set survives; pins are never stored.
+elements in assembly order. They are output only: the next run does not read them back.
 
-**After a stuck run**, `result.order` holds only the elements that were removed before the
-search stopped — the *last* ones to be assembled — and they are written with indices from 0.
-Elements that were not reached keep whatever an earlier run wrote. Check `result.is_complete`
-before relying on the attributes.
+**After a stuck run**, the elements the search did place are the *last* ones to be assembled; they
+keep their absolute positions, after the unplaced ones, which get no position at all.
+
+**The lower-level call.** `generate_assembly_sequence(model, manual_set, pinned_order, precedences,
+strategy, width, distance, use_geometry, apply_to_model=False, key=None)` returns
+`(SequenceResult, TimberModelAdapter)`; `adapter.elements_by_id` turns ids back into elements and
+`adapter.excluded` says what was left out and why. `key="guid"` identifies elements by guid
+instead of by stable key (the archive regression test uses it).
 
 **Tracing.** The library never prints. `set_tracer(True)` prints each search step;
 `set_tracer(lines.append)` collects them into a list, which is the reliable way to get them into

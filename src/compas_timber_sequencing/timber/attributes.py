@@ -22,26 +22,62 @@ STATE_ATTRIBUTE = "extraction_state"
 """str: Element attribute holding ``"roomy"``, ``"tight"`` or ``"locked"``."""
 
 
+ATTRIBUTES = (SEQUENCE_ATTRIBUTE, VECTOR_ATTRIBUTE, MANUAL_ATTRIBUTE, STATE_ATTRIBUTE)
+"""tuple of str: Every attribute this package writes."""
+
+
+def clear_attributes(element):
+    """Remove whatever an earlier sequence wrote on an element."""
+    for key in ATTRIBUTES:
+        element.attributes.pop(key, None)
+
+
+def write_attributes(element, position, insertion_vector, by_hand, state):
+    """Write one element's place in a sequence.
+
+    Parameters
+    ----------
+    element : :class:`~compas_timber.elements.TimberElement`
+    position : int
+        Absolute position in the assembly order, from 0.
+    insertion_vector : :class:`compas.geometry.Vector` or None
+    by_hand : bool
+    state : str
+
+    """
+    element.attributes[SEQUENCE_ATTRIBUTE] = position
+    element.attributes[VECTOR_ATTRIBUTE] = insertion_vector
+    element.attributes[MANUAL_ATTRIBUTE] = by_hand
+    element.attributes[STATE_ATTRIBUTE] = state
+
+
 def write_result(elements_by_id, result):
-    """Write a sequence result onto the elements it covers.
+    """Write a sequence result onto the elements.
+
+    Every element's earlier values are cleared first, so nothing from a previous run survives.
+    After a run that got stuck, ``result.order`` holds only the elements the search did place --
+    the last ones to be assembled -- so their positions start after the unplaced ones, and the
+    unplaced ones get no position at all.
 
     Parameters
     ----------
     elements_by_id : dict
-        Element id -> element, for every element in ``result.order``.
+        Element id -> element, for every sequenceable element.
     result : :class:`~compas_timber_sequencing.core.result.SequenceResult`
 
     """
+    for element in elements_by_id.values():
+        clear_attributes(element)
+    offset = len(elements_by_id) - len(result.order)
+    vectors = result.insertion_vectors
     for index, element_id in enumerate(result.order):
-        element = elements_by_id[element_id]
-        vector = result.insertion_vectors[element_id]
-        is_manual = element_id in result.manual_set
-        state = result.extraction[element_id].state
-
-        element.attributes[SEQUENCE_ATTRIBUTE] = index
-        element.attributes[VECTOR_ATTRIBUTE] = vector
-        element.attributes[MANUAL_ATTRIBUTE] = is_manual
-        element.attributes[STATE_ATTRIBUTE] = state
+        write_attributes(
+            elements_by_id[element_id],
+            offset + index,
+            vectors[element_id],
+            element_id in result.manual_set,
+            result.extraction[element_id].state,
+        )
 
 
 def read_manual_set(elements_by_id):

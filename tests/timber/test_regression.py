@@ -103,5 +103,7 @@ def test_the_sequence_matches_the_archived_implementation(label):
         strategy=STRATEGIES[strategy_name](),
         use_geometry=geometry == "geometry=True",
         apply_to_model=False,
+        # The archive identified elements by guid, and ties are broken by id: compare like with like.
+        key="guid",
     )
     assert summarize(model, result) == BASELINE[label]

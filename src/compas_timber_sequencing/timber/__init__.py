@@ -1,7 +1,15 @@
-"""Everything that knows a ``TimberModel``: the adapter that turns a model into a
-:class:`~compas_timber_sequencing.core.boundary.SequencingInput` and writes the result back
-(:mod:`~compas_timber_sequencing.timber.adapter`, :mod:`~compas_timber_sequencing.timber.attributes`), and the
-swept-box collision test it uses (:mod:`~compas_timber_sequencing.timber.collision`, pure ``compas`` geometry).
+"""Everything that knows a ``TimberModel``.
+
+* :mod:`~compas_timber_sequencing.timber.keys` -- stable element keys that survive a rebuild.
+* :mod:`~compas_timber_sequencing.timber.adapter` -- the model as a
+  :class:`~compas_timber_sequencing.core.boundary.SequencingInput`.
+* :mod:`~compas_timber_sequencing.timber.plan` -- :func:`plan_sequence`, the :class:`SequencePlan` it
+  returns, and :func:`apply_plan` to write a plan onto a model.
+* :mod:`~compas_timber_sequencing.timber.diff` -- what changed between two plans.
+* :mod:`~compas_timber_sequencing.timber.attributes` -- the four element attributes a sequence is
+  written to.
+* :mod:`~compas_timber_sequencing.timber.collision` -- the swept-box collision test (pure ``compas``
+  geometry).
 
 """
 
@@ -14,8 +22,28 @@ from .attributes import SEQUENCE_ATTRIBUTE
 from .attributes import STATE_ATTRIBUTE
 from .attributes import VECTOR_ATTRIBUTE
 from .attributes import assembly_order
+from .diff import PlanDiff
+from .diff import diff
+from .keys import KEY_TOLERANCE
+from .keys import element_keys
+from .keys import geometric_key
+from .plan import PlanCheck
+from .plan import SequencePlan
+from .plan import apply_plan
+from .plan import fingerprints
+from .plan import plan_sequence
 
 __all__ = [
+    "KEY_TOLERANCE",
+    "PlanCheck",
+    "PlanDiff",
+    "SequencePlan",
+    "apply_plan",
+    "diff",
+    "element_keys",
+    "fingerprints",
+    "geometric_key",
+    "plan_sequence",
     "MANUAL_ATTRIBUTE",
     "SEQUENCE_ATTRIBUTE",
     "STATE_ATTRIBUTE",

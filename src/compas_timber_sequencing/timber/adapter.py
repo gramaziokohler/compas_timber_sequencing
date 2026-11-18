@@ -28,17 +28,14 @@ from ..core.search import generate as generate_sequence
 from ..core.solver import APPROACH_DISTANCE
 from ..kinematics import is_fallback
 from ..kinematics import kinematic_constraint
-from .attributes import read_manual_set
 from .attributes import write_result
 from .collision import SWEEP_START_FRACTION
 from .collision import bounds_overlap
 from .collision import box_bounds
 from .collision import swept_aabb
 from .collision import swept_box_hits_box
-
-
-def _element_id(element):
-    return str(element.guid)
+from .keys import KEY_TOLERANCE
+from .keys import element_keys
 
 
 def constraints_from_joint_output(raw, inferred=False):
@@ -89,6 +86,14 @@ class TimberModelAdapter(object):
         Supply the swept broad-phase callback. Without it the sequencer relies on joint
         constraints alone and can be fooled by an element that is in the way but not
         jointed. Turning it off is useful when element geometry cannot be computed.
+    key : str or callable, optional
+        How elements are identified. The default, ``None``, uses the stable keys of
+        :func:`~compas_timber_sequencing.timber.keys.element_keys` -- names where given, geometry
+        otherwise -- so that ids, and with them the sequence of an unchanged design, survive a
+        rebuild of the model. ``"guid"`` uses ``str(element.guid)``, which changes on every
+        rebuild. A callable maps an element to its id.
+    tolerance : float, optional
+        Rounding for geometric keys, in model units.
 
     Attributes
     ----------
@@ -99,18 +104,40 @@ class TimberModelAdapter(object):
 
     """
 
-    def __init__(self, model, use_geometry=True):
+    def __init__(self, model, use_geometry=True, key=None, tolerance=KEY_TOLERANCE):
         self.model = model
         self.use_geometry = use_geometry
+        if key is None:
+            self._ids = element_keys(model, tolerance)
+        elif key == "guid":
+            self._ids = {str(element.guid): str(element.guid) for element in model.elements()}
+        elif callable(key):
+            self._ids = {str(element.guid): key(element) for element in model.elements()}
+        else:
+            raise ValueError("key must be None, 'guid' or a callable, got {!r}.".format(key))
         self.elements_by_id = {}
         self.excluded = {}
         self._excluded_elements = {}
         self._bounds_cache = {}
         self._collect()
 
+    def id_of(self, element):
+        """The id this adapter uses for `element`.
+
+        Parameters
+        ----------
+        element : :class:`~compas_timber.elements.TimberElement`
+
+        Returns
+        -------
+        str
+
+        """
+        return self._ids[str(element.guid)]
+
     def _collect(self):
         for element in self.model.elements():
-            element_id = _element_id(element)
+            element_id = self.id_of(element)
             if getattr(element, "is_group_element", False):
                 self.excluded[element_id] = "group containers are not sequenced"
                 self._excluded_elements[element_id] = element
@@ -128,7 +155,7 @@ class TimberModelAdapter(object):
         for element_id, element in self.elements_by_id.items():
             for joint in self._joints_for(element):
                 for other in joint.elements:
-                    other_id = _element_id(other)
+                    other_id = self.id_of(other)
                     if other_id != element_id and other_id in self.elements_by_id:
                         neighbors[element_id].add(other_id)
         # Enforce symmetry: a joint recorded on one side only would otherwise be a
@@ -141,7 +168,7 @@ class TimberModelAdapter(object):
     def _joint_members(self):
         members = {}
         for joint in self.model.joints:
-            member_ids = tuple(_element_id(element) for element in joint.elements)
+            member_ids = tuple(self.id_of(element) for element in joint.elements)
             if any(member_id in self.elements_by_id for member_id in member_ids):
                 members[str(joint.guid)] = member_ids
         return members
@@ -151,9 +178,9 @@ class TimberModelAdapter(object):
         for element in self.model.elements():
             if not getattr(element, "is_group_element", False):
                 continue
-            label = _element_id(element)
+            label = self.id_of(element)
             for child in element.children or ():
-                child_id = _element_id(child)
+                child_id = self.id_of(child)
                 if child_id in self.elements_by_id:
                     groups[child_id] = label
         return groups
@@ -169,7 +196,7 @@ class TimberModelAdapter(object):
         element = self.elements_by_id[element_id]
         constraints = []
         for joint in self._joints_for(element):
-            partners = set(_element_id(other) for other in joint.elements) - {element_id}
+            partners = set(self.id_of(other) for other in joint.elements) - {element_id}
             if not partners & set(active_neighbor_ids):
                 continue
             # Joints without a registered implementation get the permissive fallback; its
@@ -221,7 +248,7 @@ class TimberModelAdapter(object):
             return True
 
         near = distance * SWEEP_START_FRACTION
-        neighbor_ids = set(_element_id(other) for joint in self._joints_for(element) for other in joint.elements)
+        neighbor_ids = set(self.id_of(other) for joint in self._joints_for(element) for other in joint.elements)
         candidates = (set(active_ids) - neighbor_ids - {element_id}) | set(self._excluded_elements)
 
         for other_id in sorted(candidates, key=str):
@@ -272,16 +299,6 @@ class TimberModelAdapter(object):
             excluded=self.excluded,
         )
 
-    def manual_set_from_model(self):
-        """Read the persisted hand-placement set off the element attributes.
-
-        Returns
-        -------
-        set
-
-        """
-        return read_manual_set(self.elements_by_id)
-
     def apply(self, result):
         """Write a sequence result back onto the model's elements.
 
@@ -297,20 +314,22 @@ class TimberModelAdapter(object):
         write_result(self.elements_by_id, result)
 
 
-def sequencing_input_from_model(model, use_geometry=True):
+def sequencing_input_from_model(model, use_geometry=True, key=None):
     """Flatten a timber model into a sequencing input.
 
     Parameters
     ----------
     model : :class:`~compas_timber.model.TimberModel`
     use_geometry : bool, optional
+    key : str or callable, optional
+        See :class:`TimberModelAdapter`.
 
     Returns
     -------
     :class:`~compas_timber_sequencing.core.boundary.SequencingInput`
 
     """
-    return TimberModelAdapter(model, use_geometry=use_geometry).build()
+    return TimberModelAdapter(model, use_geometry=use_geometry, key=key).build()
 
 
 def generate_assembly_sequence(
@@ -321,18 +340,20 @@ def generate_assembly_sequence(
     width=None,
     distance=APPROACH_DISTANCE,
     use_geometry=True,
-    apply_to_model=True,
+    apply_to_model=False,
+    precedences=None,
+    key=None,
 ):
-    """Sequence a timber model and, by default, write the result onto it.
+    """Sequence a timber model. The lower-level call behind :func:`~compas_timber_sequencing.timber.plan.plan_sequence`.
 
     Parameters
     ----------
     model : :class:`~compas_timber.model.TimberModel`
     manual_set : iterable, optional
-        Element ids (``str(element.guid)``) to treat as hand-placed. Defaults to whatever
-        is already persisted on the elements, so that an amended set survives a re-run.
+        Element ids to treat as hand-placed.
     pinned_order : dict or list, optional
-        Element id -> assembly index, or a list of element ids in assembly order.
+        Element id -> assembly index (negative counts from the end), or a list of element ids
+        in assembly order.
     strategy : :class:`~compas_timber_sequencing.ranking.context.PreferenceStrategy`, optional
     width : int, optional
         Beam width.
@@ -341,7 +362,12 @@ def generate_assembly_sequence(
     use_geometry : bool, optional
         Whether to run the swept broad-phase check at all.
     apply_to_model : bool, optional
-        Write the sequence onto element and graph attributes.
+        Write the sequence into the element attributes. Off by default: the model is not
+        changed unless you ask for it.
+    precedences : iterable of tuple, optional
+        ``(a, b)`` pairs of element ids: ``a`` is assembled before ``b``.
+    key : str or callable, optional
+        See :class:`TimberModelAdapter`.
 
     Returns
     -------
@@ -350,13 +376,10 @@ def generate_assembly_sequence(
         ids back into elements.
 
     """
-    adapter = TimberModelAdapter(model, use_geometry=use_geometry)
+    adapter = TimberModelAdapter(model, use_geometry=use_geometry, key=key)
     sequencing_input = adapter.build()
 
-    if manual_set is None:
-        manual_set = adapter.manual_set_from_model()
-
-    kwargs = {"manual_set": manual_set, "pinned_order": pinned_order, "strategy": strategy, "distance": distance}
+    kwargs = {"manual_set": manual_set, "pinned_order": pinned_order, "precedences": precedences, "strategy": strategy, "distance": distance}
     if width is not None:
         kwargs["width"] = width
 

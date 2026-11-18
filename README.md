@@ -34,33 +34,49 @@ that is not a timber model, build a `SequencingInput` yourself and call `generat
 
 ## Use
 
+Sequencing is a loop: plan, look, adjust, plan again. The model is often rebuilt in between -- by a
+Grasshopper recompute or a new script run -- so plans and adjustments refer to beams by **key**: the
+beam's name where it has a unique one, otherwise a fingerprint of its centerline and section. Name your
+beams if you can; it makes everything below readable and lets a beam keep its key when it moves.
+
 ```python
-from compas_timber_sequencing import assembly_order
-from compas_timber_sequencing import generate_assembly_sequence
+from compas_timber_sequencing import SequenceOverrides, apply_plan, diff, plan_sequence
 
-result, adapter = generate_assembly_sequence(model)  # model: a compas_timber TimberModel
+plan = plan_sequence(model)  # model: a compas_timber TimberModel; it is not changed
+print(plan.describe())  # position, key, insertion vector, fit (roomy | tight | locked)
 
-if not result.is_complete:
-    print(result.stuck.describe())
+# Adjust by stating intent, not positions:
+overrides = SequenceOverrides()
+overrides.keep_order(plan, until=2)  # keep the first two steps in their planned order
+overrides.place_before("strut", "bottom rail")  # but the strut goes in before the bottom rail
+overrides.place_by_hand("brace")  # placed by a person, not the robot
 
-for element_id in result.order:
-    beam = adapter.elements_by_id[element_id]
-    vector = result.insertion_vectors[element_id]  # None means place by hand
-    state = result.state(element_id)  # roomy | tight | locked
+adjusted = plan_sequence(model, overrides)
+print(diff(plan, adjusted).describe())  # what moved, what turned, what got tighter
 
-# The sequence is also written into each element's attributes, and survives a JSON round trip:
-ordered_beams = assembly_order(model)
+adjusted.to_json("plan.json")  # plans and overrides save and load like any COMPAS data
 ```
 
-Options of `generate_assembly_sequence`, all importable from `compas_timber_sequencing`:
+* **Overrides are hard constraints.** `place_before` / `place_after` (relative, survive beams being
+  added or removed), `keep_order`, `place_by_hand`, `pin(key, position)` (absolute; negative counts from
+  the end), `use_strategy(name)`, `forget(key)`. Contradictions raise and name the cycle; an order the
+  joints cannot allow ends in a stuck report saying which precedence blocked.
+* **Plans are data, kept apart from the model.** `plan.position(key)`, `plan.insertion_vector(key)`,
+  `plan.state(key)`, `plan.is_complete`, `plan.stuck`, `plan.staleness` (overrides that no longer
+  match anything), `plan.proposed_by_hand` (what the solver suggests placing by hand).
+* **Plans and models are compared, not trusted.** `plan.check(model)` says which beams are missing, new,
+  or changed in geometry or joints since the plan was made. `apply_plan(model, plan)` writes the plan
+  into the element attributes for export, matching beams by key, so it works on a rebuilt model;
+  `assembly_order(model)` reads it back.
+* **Options of `plan_sequence`:** `strategy=make_strategy("clearance")` uses a different ranking
+  (`compare_strategies` scores them side by side; `scripts/compare_strategies.py` runs that on a saved
+  model); `use_geometry=False` skips the collision check and trusts the joints alone; `distance=` sets
+  the approach distance (default 100 model units); `width=` sets how many partial orders the search
+  keeps (default 5); `tolerance=` sets the rounding for geometric keys (default 1 model unit).
+* **Tracing:** `set_tracer(True)` prints each search step, and `set_tracer(lines.append)` collects the
+  steps into a list, for a Grasshopper panel.
 
-* `manual_set=...` declares elements (by `str(element.guid)`) as hand-placed. It is stored on the elements and survives re-runs.
-* `pinned_order=...` fixes positions for one particular build.
-* `strategy=make_strategy("clearance")` uses a different ranking. `compare_strategies` scores them side by side, and `scripts/compare_strategies.py` runs that on a saved model.
-* `use_geometry=False` skips the collision check and trusts the joints alone; `distance=` sets the approach distance (default 100 model units); `width=` sets how many partial orders the search keeps (default 5); `apply_to_model=False` leaves the model untouched.
-* `set_tracer(True)` prints each search step, and `set_tracer(lines.append)` collects the steps into a list, for a Grasshopper panel. This one is a separate function, not an option.
-
-Beams only. Any other element is excluded and reported in `result.excluded`.
+Beams only. Any other element is excluded and reported in `plan.excluded`.
 
 ## Example
 
@@ -73,8 +89,9 @@ python examples/sequence_model.py
 python examples/sequence_model.py tests/timber/data/model_test.json
 ```
 
-It prints what each joint allows, the sequence (order, insertion vector, fit, clearance angle), the
-strategies side by side, and the four attributes the result is stored in. `tests/test_examples.py`
+It prints what each joint allows, the plan (order, insertion vector, fit, clearance angle), the
+strategies side by side, an adjustment with overrides and its diff, and the plan saved, checked against a
+rebuilt model and applied. `tests/test_examples.py`
 runs it, so it stays working.
 
 ## Joint kinematics
@@ -155,12 +172,16 @@ TimberModel ──► timber/adapter.py ──► SequencingInput ──► core
 | `core/blocking.py` | no | Intrinsic locks, ground connectivity, subassemblies |
 | `core/search.py` | no | Beam search; `generate()` |
 | `core/result.py`, `core/trace.py` | no | Result types; opt-in tracing (`set_tracer`) |
+| `core/overrides.py` | no | `SequenceOverrides`: precedences, pins, hand placement, strategy |
 | `ranking/context.py` | no | What a strategy is given (`RankingContext`), the strategy base class, `rank()` |
 | `ranking/terms.py` | no | The named ranking terms (`stable`, `clear_above`, `base_z`, ...) |
 | `ranking/strategies.py` | no | `gravity`, `layered`, `clearance`, `skeleton`, `subassembly`, `chain`, `random`, and custom strategies |
 | `ranking/compare.py` | no | Scores several strategies on one model, side by side |
 | `kinematics/` | yes | Per-joint freedom: one module per `compas_timber` joint module, explicit registry by exact joint class |
-| `timber/adapter.py` | yes | `TimberModel` → `SequencingInput`; `generate_assembly_sequence()` |
+| `timber/keys.py` | yes | Stable element keys: names, or a fingerprint of the geometry |
+| `timber/plan.py` | yes | `plan_sequence()`, `SequencePlan`, `plan.check(model)`, `apply_plan()` |
+| `timber/diff.py` | yes | `diff(old, new)`: what changed between two plans |
+| `timber/adapter.py` | yes | `TimberModel` → `SequencingInput`; the lower-level `generate_assembly_sequence()` |
 | `timber/attributes.py` | yes | Writes the result into `element.attributes`; `assembly_order()` reads it back |
 | `timber/collision.py` | no | The swept-box collision test the adapter uses (pure `compas` geometry) |
 
@@ -181,14 +202,11 @@ More:
 * **From elements:** `guid`, `is_beam`, `is_group_element`, `children`, `centerline`, `obb`, `attributes`.
 * **From joints:** `elements`, and each joint type's planes, reference-side indices and parameters (see [`docs/spec.md`](docs/spec.md) §10).
 
-It writes only `element.attributes`: `assembly_sequence`, `insertion_vector`,
-`requires_manual_assembly` and `extraction_state`.
+It writes only `element.attributes`, and only when you call `apply_plan`: `assembly_sequence`,
+`insertion_vector`, `requires_manual_assembly` and `extraction_state`.
 
 ## Known issues
 
-* **After a stuck run** (`result.is_complete` is `False`), the indices written into the element
-  attributes are not absolute assembly positions, and beams the search never reached keep whatever
-  an earlier run wrote; see [`docs/spec.md`](docs/spec.md) §11.
 * **The `clearance` strategy is sensitive to the last digit of the geometry.** It ranks on the raw
   clearance value, so beams with equal clearances can swap places when the geometry changes by
   rounding error alone (this happened between `compas_timber` 2.x and 3.0 on one test model).

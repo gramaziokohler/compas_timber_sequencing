@@ -21,9 +21,12 @@ def test_sequence_model_runs_on_the_compas_timber_example_frame(capsys):
     assert result.is_complete
     assert len(result.order) == 6
     assert result.inferred_total == 0, "every joint in the frame has kinematics"
-    for heading in ("1. WHAT EACH JOINT ALLOWS", "2. ASSEMBLY SEQUENCE", "3. STRATEGIES SIDE BY SIDE", "4. WHERE THE RESULT IS STORED"):
+    for heading in ("1. WHAT EACH JOINT ALLOWS", "2. THE PLAN", "3. STRATEGIES SIDE BY SIDE", "4. ADJUSTING THE PLAN", "5. SAVE, REBUILD, APPLY"):
         assert heading in output
-    assert "returns the same order: True" in output
+    assert "loads back unchanged: True" in output
+    assert "The plan matches the model." in output
+    # The adjustment is honoured: the strut goes in before the bottom rail.
+    assert result.position("strut") < result.position("bottom rail")
 
 
 def test_the_example_frame_matches_compas_timbers_example():

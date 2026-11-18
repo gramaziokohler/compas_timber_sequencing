@@ -79,6 +79,7 @@ def beam_search(
     subassemblies=None,
     width=DEFAULT_BEAM_WIDTH,
     distance=APPROACH_DISTANCE,
+    precedences=None,
 ):
     """Search for a disassembly order.
 
@@ -97,6 +98,10 @@ def beam_search(
         Element id -> label, for the continuity term in ranking.
     width : int, optional
     distance : float, optional
+    precedences : dict, optional
+        Element id -> the ids that must be **assembled after** it. In disassembly that means
+        the element cannot be removed while any of those is still in place. A hard
+        constraint, like a pin: :func:`generate` builds it from the caller's pairs.
 
     Returns
     -------
@@ -107,6 +112,7 @@ def beam_search(
     """
     manual_set = set(manual_set or ())
     pins = dict(pins or {})
+    later = {element_id: set(after) for element_id, after in (precedences or {}).items()}
     strategy = strategy or GravityStrategy()
     subassemblies = subassemblies or {}
     width = max(1, int(width))
@@ -142,6 +148,10 @@ def beam_search(
                 reserved_step = step_of_pinned.get(element_id)
                 if reserved_step is not None and reserved_step != step:
                     blockers[element_id] = "pinned to assembly position {}".format(total - 1 - reserved_step)
+                    continue
+                waiting = later.get(element_id, set()) & active
+                if waiting:
+                    blockers[element_id] = "must be assembled before {}, still in place".format(", ".join(sorted((str(w) for w in waiting))))
                     continue
                 result = cache.get(element_id, active)
                 if result.is_feasible or element_id in manual_set:
@@ -229,6 +239,9 @@ def _normalize_pins(sequencing_input, pinned_order, staleness):
                 "pinned order lists {} elements but the model has {}; positions beyond the list are free".format(len(pinned_list), total),
             )
 
+    # A negative position counts from the end: -1 is the last element placed.
+    requested = [(element_id, index + total if isinstance(index, int) and index < 0 else index) for element_id, index in requested]
+
     by_index = {}
     for element_id, assembly_index in sorted(requested, key=lambda item: (item[1], sort_key(item[0]))):
         if element_id not in sequencing_input:
@@ -250,6 +263,64 @@ def _normalize_pins(sequencing_input, pinned_order, staleness):
         by_index[assembly_index] = element_id
 
     return {total - 1 - assembly_index: element_id for assembly_index, element_id in by_index.items()}
+
+
+def _normalize_precedences(sequencing_input, precedences, staleness):
+    """Turn ``(a, b)`` pairs -- `a` is assembled before `b` -- into ``{a: {b, ...}}``.
+
+    Pairs naming an element that is not sequenced are reported as stale and dropped. Pairs
+    that contradict each other cannot all be honoured by any order, so they raise.
+
+    Raises
+    ------
+    ValueError
+        If the precedences form a cycle; the message lists it.
+
+    """
+    later = {}
+    for pair in precedences or ():
+        first, then = pair
+        missing = [element_id for element_id in (first, then) if element_id not in sequencing_input]
+        if missing:
+            for element_id in missing:
+                reason = "not in the model"
+                if element_id in sequencing_input.excluded:
+                    reason = "excluded from sequencing ({})".format(sequencing_input.excluded[element_id])
+                staleness.add("before", element_id, "{!r} before {!r} dropped: {!r} is {}".format(first, then, element_id, reason))
+            continue
+        if first == then:
+            staleness.add("before", first, "{!r} before itself is meaningless and was dropped".format(first))
+            continue
+        later.setdefault(first, set()).add(then)
+
+    cycle = _find_cycle(later)
+    if cycle:
+        raise ValueError("These precedences contradict each other: {}.".format(" before ".join(repr(element_id) for element_id in cycle)))
+    return later
+
+
+def _find_cycle(graph):
+    """A cycle in ``{node: {successor, ...}}`` as a list that starts and ends on the same node, or None."""
+    state = {}
+    for start in sorted(graph, key=sort_key):
+        if state.get(start):
+            continue
+        path = [start]
+        stack = [iter(sorted(graph.get(start, ()), key=sort_key))]
+        state[start] = 1
+        while stack:
+            node = next(stack[-1], None)
+            if node is None:
+                state[path.pop()] = 2
+                stack.pop()
+                continue
+            if state.get(node) == 1:
+                return path[path.index(node) :] + [node]
+            if not state.get(node):
+                state[node] = 1
+                path.append(node)
+                stack.append(iter(sorted(graph.get(node, ()), key=sort_key)))
+    return None
 
 
 def _normalize_manual(sequencing_input, manual_set, staleness):
@@ -276,6 +347,7 @@ def generate(
     strategy=None,
     width=DEFAULT_BEAM_WIDTH,
     distance=APPROACH_DISTANCE,
+    precedences=None,
 ):
     """Produce an assembly order, insertion vectors and a hand-placement set.
 
@@ -291,21 +363,32 @@ def generate(
         This is a fact about the design, so the caller should persist it with the model.
     pinned_order : dict or list, optional
         Either element id -> assembly index, or a list of element ids in assembly order.
-        A fact about a particular build, so it is supplied per run rather than stored.
-        Pins win: an unhonourable pin is reported, never silently reordered around.
+        A negative index counts from the end (-1 is placed last). Pins win: an unhonourable
+        pin is reported, never silently reordered around.
     strategy : :class:`~compas_timber_sequencing.ranking.context.PreferenceStrategy`, optional
     width : int, optional
     distance : float, optional
         Approach distance for the swept broad-phase check.
+    precedences : iterable of tuple, optional
+        ``(a, b)`` pairs: `a` must be assembled before `b`. Hard constraints, like pins, but
+        relative, so they survive elements being added or removed. Unlike a ranking strategy
+        they are never traded off: an order that cannot honour them ends in a stuck report
+        naming the precedence that blocked.
 
     Returns
     -------
     :class:`~compas_timber_sequencing.core.result.SequenceResult`
 
+    Raises
+    ------
+    ValueError
+        If the precedences contradict each other.
+
     """
     staleness = StalenessReport()
     user_manual = _normalize_manual(sequencing_input, manual_set, staleness)
     pins = _normalize_pins(sequencing_input, pinned_order, staleness)
+    later = _normalize_precedences(sequencing_input, precedences, staleness)
 
     trace(
         "sequencing {} elements ({} excluded), geometry check {}".format(
@@ -341,6 +424,7 @@ def generate(
         subassemblies=labels,
         width=width,
         distance=distance,
+        precedences=later,
     )
 
     assembly_order = list(reversed(order))

@@ -131,10 +131,26 @@ from .timber.adapter import TimberModelAdapter
 from .timber.adapter import generate_assembly_sequence
 from .timber.adapter import sequencing_input_from_model
 from .timber.attributes import assembly_order
+from .core.overrides import SequenceOverrides
+from .timber.diff import PlanDiff
+from .timber.diff import diff
+from .timber.keys import element_keys
+from .timber.plan import PlanCheck
+from .timber.plan import SequencePlan
+from .timber.plan import apply_plan
+from .timber.plan import plan_sequence
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "PlanCheck",
+    "PlanDiff",
+    "SequenceOverrides",
+    "SequencePlan",
+    "apply_plan",
+    "diff",
+    "element_keys",
+    "plan_sequence",
     "sequencing_input_from_model",
     "generate_assembly_sequence",
     "assembly_order",
