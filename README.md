@@ -56,6 +56,21 @@ Overrides:
 
 Beams only. Any other element is excluded and reported in `result.excluded`.
 
+## Example
+
+[`examples/sequence_model.py`](examples/sequence_model.py) sequences the six-beam frame from
+`compas_timber`'s own `examples/model/0001_model.py` (L-miters, a T-lap and T-butts), or any saved
+`TimberModel` JSON you pass it:
+
+```bash
+python examples/sequence_model.py
+python examples/sequence_model.py tests/timber/data/model_test.json
+```
+
+It prints what each joint allows, the sequence (order, insertion vector, fit, clearance angle), the
+strategies side by side, and the four attributes the result is stored in. `tests/test_examples.py`
+runs it, so it stays working.
+
 ## Joint kinematics
 
 `kinematic_constraint(joint, moving_element)` returns how a member may be pulled out of a joint
