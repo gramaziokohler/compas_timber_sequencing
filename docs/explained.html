@@ -262,21 +262,20 @@
   <h2>Two packages, one boundary</h2>
   <p class="deck">Why the algorithm code cannot see a beam.</p>
 
-  <p>The work is split across two packages:</p>
+  <p>Everything lives in <code>compas_timber_sequencing</code>, in three layers:</p>
   <ul>
-    <li><code>compas_timber_sequencing</code> &mdash; the algorithms. Cones, graphs, search. Depends on <code>compas.geometry</code> and nothing else. No numpy, no scipy, Python 3.9 syntax so it runs under Rhino's CPython.</li>
-    <li><code>compas_timber_sequencing.timber</code> &mdash; the adapter, and the only module that imports <code>compas_timber</code>.</li>
-    <li><code>compas_timber_sequencing.kinematics</code> &mdash; <code>kinematic_constraint(joint, element)</code>, the per-joint input, dispatched on the joint's class. <code>compas_timber</code> itself is unchanged.</li>
+    <li><b>The algorithms</b> &mdash; cones, graphs, search. Depend on <code>compas.geometry</code> and nothing else. No numpy, no scipy, Python 3.9 syntax so it runs under Rhino's CPython.</li>
+    <li><b><code>kinematics/</code></b> &mdash; <code>kinematic_constraint(joint, element)</code>, the per-joint input, dispatched on the joint's class. It reads each joint's planes, reference sides and parameters.</li>
+    <li><b><code>timber.py</code></b> &mdash; the adapter: reads beams, joints and geometry from a <code>TimberModel</code>, builds the input, and writes the result back into <code>element.attributes</code>.</li>
   </ul>
-  <p><em>The diagram below was drawn when the adapter still lived in <code>compas_timber</code>; it now sits on the sequencing side of the line, with nothing else changed.</em></p>
 
-  <p>The dependency runs one way only, and it is enforced structurally rather than by convention: <code>compas_timber_sequencing</code> imports <code>compas_timber</code>, and <code>compas_timber</code> never imports it back.</p>
+  <p>The dependency runs one way only: <code>compas_timber_sequencing</code> reads <code>compas_timber</code>, and <code>compas_timber</code> never imports it back. <code>compas_timber</code> needs no changes to be sequenced.</p>
 
   <p>That matters because of what it buys. Everything the algorithms are allowed to know passes through one object, <code>SequencingInput</code>. Which means the solver can be tested against about twenty lines of hand-written literals &mdash; no model, no Rhino, no joint classes. When a sequence comes out wrong, you can ask whether the geometry was wrong or the search was wrong, and get separate answers.</p>
 
   <figure class="wide">
     <div class="figframe">
-      <svg viewBox="0 0 760 272" role="img" aria-label="TimberModel feeds an adapter which builds a SequencingInput; the algorithms read it and call back into the adapter for constraints and collision checks, so no import ever crosses back.">
+      <svg viewBox="0 0 760 272" role="img" aria-label="On the compas_timber side, the TimberModel and the joint classes are only read. On the compas_timber_sequencing side, the adapter reads the model and builds a SequencingInput; the algorithms read it and call back into the adapter for constraints and collision checks; the adapter asks the kinematics module, which reads the joint classes.">
         <defs>
           <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 1 L 9 5 L 0 9 z" fill="currentColor"/>
@@ -286,43 +285,58 @@
           </marker>
         </defs>
 
-        <line x1="406" y1="16" x2="406" y2="252" class="svg-faint" stroke-dasharray="4 4"/>
-        <text x="200" y="264" text-anchor="middle" class="svg-mono">compas_timber</text>
-        <text x="588" y="264" text-anchor="middle" class="svg-mono">assembly_sequencing</text>
+        <line x1="190" y1="16" x2="190" y2="252" class="svg-faint" stroke-dasharray="4 4"/>
+        <text x="95" y="264" text-anchor="middle" class="svg-mono">compas_timber</text>
+        <text x="475" y="264" text-anchor="middle" class="svg-mono">compas_timber_sequencing</text>
 
-        <rect x="24" y="46" width="140" height="50" rx="3" class="svg-box"/>
-        <text x="94" y="76" text-anchor="middle" class="svg-label">TimberModel</text>
+        <rect x="16" y="46" width="150" height="50" rx="3" class="svg-box"/>
+        <text x="91" y="70" text-anchor="middle" class="svg-label">TimberModel</text>
+        <text x="91" y="86" text-anchor="middle" class="svg-small">beams, joints</text>
+
+        <rect x="16" y="168" width="150" height="50" rx="3" class="svg-box"/>
+        <text x="91" y="192" text-anchor="middle" class="svg-label">joint classes</text>
+        <text x="91" y="208" text-anchor="middle" class="svg-small">planes, ref sides</text>
 
         <rect x="214" y="46" width="170" height="50" rx="3" class="svg-box"/>
-        <text x="299" y="70" text-anchor="middle" class="svg-label">TimberModelAdapter</text>
+        <text x="299" y="70" text-anchor="middle" class="svg-label">timber.py adapter</text>
         <text x="299" y="86" text-anchor="middle" class="svg-small">beams, joints, geometry</text>
 
-        <rect x="448" y="46" width="170" height="50" rx="3" class="svg-box-accent"/>
-        <text x="533" y="70" text-anchor="middle" class="svg-label">SequencingInput</text>
-        <text x="533" y="86" text-anchor="middle" class="svg-small">the whole vocabulary</text>
+        <rect x="214" y="168" width="128" height="50" rx="3" class="svg-box"/>
+        <text x="278" y="192" text-anchor="middle" class="svg-label">kinematics/</text>
+        <text x="278" y="208" text-anchor="middle" class="svg-small">per-joint freedom</text>
 
-        <rect x="448" y="168" width="280" height="66" rx="3" class="svg-box"/>
-        <text x="588" y="192" text-anchor="middle" class="svg-label">solver &middot; blocking &middot; search</text>
-        <text x="588" y="210" text-anchor="middle" class="svg-small">cones, SCC, beam search</text>
-        <text x="588" y="226" text-anchor="middle" class="svg-small">no model reference anywhere</text>
+        <rect x="500" y="46" width="170" height="50" rx="3" class="svg-box-accent"/>
+        <text x="585" y="70" text-anchor="middle" class="svg-label">SequencingInput</text>
+        <text x="585" y="86" text-anchor="middle" class="svg-small">the whole vocabulary</text>
 
-        <line x1="164" y1="71" x2="208" y2="71" class="svg-line" marker-end="url(#ah)"/>
-        <text x="186" y="38" text-anchor="middle" class="svg-small">reads</text>
+        <rect x="500" y="168" width="244" height="66" rx="3" class="svg-box"/>
+        <text x="622" y="192" text-anchor="middle" class="svg-label">solver &middot; blocking &middot; search</text>
+        <text x="622" y="210" text-anchor="middle" class="svg-small">cones, SCC, beam search</text>
+        <text x="622" y="226" text-anchor="middle" class="svg-small">no model reference anywhere</text>
 
-        <line x1="384" y1="71" x2="442" y2="71" class="svg-line" marker-end="url(#ah)"/>
-        <text x="415" y="38" text-anchor="middle" class="svg-small">builds</text>
+        <line x1="166" y1="71" x2="208" y2="71" class="svg-line" marker-end="url(#ah)"/>
+        <text x="187" y="62" text-anchor="middle" class="svg-small">reads</text>
 
-        <line x1="533" y1="96" x2="533" y2="162" class="svg-line" marker-end="url(#ah)"/>
-        <text x="543" y="134" class="svg-small">read by</text>
+        <line x1="214" y1="193" x2="172" y2="193" class="svg-line" marker-end="url(#ah)"/>
+        <text x="193" y="184" text-anchor="middle" class="svg-small">reads</text>
 
-        <path d="M 448 190 H 322 V 102" class="svg-accent" stroke-dasharray="5 3" marker-end="url(#ah-a)"/>
-        <text x="386" y="183" text-anchor="middle" class="svg-mono">constraints(id, active)</text>
+        <line x1="262" y1="96" x2="262" y2="162" class="svg-line" marker-end="url(#ah)"/>
+        <text x="254" y="134" text-anchor="end" class="svg-small">asks</text>
 
-        <path d="M 448 220 H 262 V 102" class="svg-accent" stroke-dasharray="5 3" marker-end="url(#ah-a)"/>
-        <text x="356" y="236" text-anchor="middle" class="svg-mono">path_is_clear(dir, dist, active)</text>
+        <line x1="384" y1="71" x2="494" y2="71" class="svg-line" marker-end="url(#ah)"/>
+        <text x="439" y="62" text-anchor="middle" class="svg-small">builds</text>
+
+        <line x1="585" y1="96" x2="585" y2="162" class="svg-line" marker-end="url(#ah)"/>
+        <text x="595" y="134" class="svg-small">read by</text>
+
+        <path d="M 500 186 H 368 V 102" class="svg-accent" stroke-dasharray="5 3" marker-end="url(#ah-a)"/>
+        <text x="376" y="158" class="svg-mono">constraints(id, active)</text>
+
+        <path d="M 500 216 H 350 V 102" class="svg-accent" stroke-dasharray="5 3" marker-end="url(#ah-a)"/>
+        <text x="496" y="236" text-anchor="end" class="svg-mono">path_is_clear(dir, dist, active)</text>
       </svg>
     </div>
-    <figcaption><b>Solid arrows are imports; dashed teal arrows are callbacks.</b> Data flows back across the boundary at run time without any dependency flowing back at compile time. That is why <code>constraints</code> and <code>path_is_clear</code> are functions rather than lookup tables &mdash; the geometry stays on the timber side.</figcaption>
+    <figcaption><b>Solid arrows read or call; dashed teal arrows are callbacks.</b> Nothing on the left imports anything on the right. The algorithms never see a beam: <code>constraints</code> and <code>path_is_clear</code> are functions rather than lookup tables, so the geometry stays in the adapter and in <code>kinematics/</code>.</figcaption>
   </figure>
 
   <h3>Why those two are callbacks</h3>
@@ -421,8 +435,8 @@ subject to |d| = 1</code></pre>
   <p>Where margins tie exactly, four further keys settle it: alignment with the interior seed (the "most centred" direction), then alignment with world up, then the rounded components for pure determinism. The world-up term is a gravity-friendly preference among directions the geometry genuinely cannot distinguish.</p>
 
   <h3>Then the collision check</h3>
-  <p>Joint constraints only see <em>jointed</em> neighbours. In a dense lattice a beam can be perfectly free according to its joints while its extraction path drives straight through a beam it is not jointed to. So after the cone solve, candidates are offered in descending margin order to a swept broad-phase check against <em>all</em> remaining elements, and the first that clears wins.</p>
-  <p>The check sweeps the element's oriented bounding box a fixed short distance (default 100 model units) and tests axis-aligned overlap. Broad-phase, so a reported collision may be a false alarm while a reported clearance is trustworthy &mdash; erring toward "obstructed" is the safe direction for a robot.</p>
+  <p>Joint constraints only see <em>jointed</em> neighbours. In a dense lattice a beam can be perfectly free according to its joints while its extraction path drives straight through a beam it is not jointed to. So after the cone solve, candidates are offered in descending margin order to a swept check against every remaining element it is <em>not</em> jointed to, and the first that clears wins.</p>
+  <p>The check sweeps the element's oriented bounding box a fixed short distance (default 100 model units), starting 5% of the way out so that elements touching at the start do not veto everything. Axis-aligned bounds discard whatever is nowhere near; what survives gets an exact separating-axis test between the swept box and the other element's oriented box. The exact test matters: bounds around a diagonal brace are mostly empty space, and a bounds-only check reports beams blocked by nothing. Two beams that already overlap at rest without a recorded joint &mdash; common in a reciprocal frame &mdash; only block a direction that drives them <em>deeper</em> into each other. What stays approximate is the element: it is its bounding box, solid to the full section, which errs toward "obstructed", the safe direction for a robot.</p>
 
   <details>
     <summary>What happens with zero constraints</summary>
@@ -662,7 +676,7 @@ subject to |d| = 1</code></pre>
   <p>Five partial sequences are carried at a time. At each step, for each partial:</p>
 
   <ol>
-    <li><strong>Assess the state.</strong> Find the grounded elements (everything at the lowest <code>base_z</code>), then run one articulation-point pass to find every element whose removal would strand part of the assembly from the ground. One pass answers this for all candidates at once.</li>
+    <li><strong>Assess the state.</strong> Find the grounded elements (every base within a thousandth of the model's height of the lowest <code>base_z</code>, so that feet cut to one slab all count), then run one articulation-point pass to find every element whose removal would strand part of the assembly from the ground. One pass answers this for all candidates at once.</li>
     <li><strong>Filter &mdash; the hard gate.</strong> Solve each remaining element against the current active set. Feasible elements pass. Hand-placed elements pass regardless, because a person can rotate, tilt and spring a member into place and robot kinematics do not apply. Everything else is recorded with its blocking reason.</li>
     <li><strong>Honour pins.</strong> If a pin claims this step, it becomes the only candidate. If it cannot be honoured, this partial dies with a conflict report.</li>
     <li><strong>Rank &mdash; the soft preferences.</strong> Score the survivors and take the best few.</li>
@@ -682,17 +696,18 @@ subject to |d| = 1</code></pre>
       <thead><tr><th>#</th><th>Term</th><th>Why it sits there</th></tr></thead>
       <tbody>
         <tr><td>1</td><td>Does not strand anything</td><td>the one term whose violation produces obvious nonsense, so it leads</td></tr>
-        <tr><td>2</td><td><code>base_z</code>, descending</td><td>take the high things off first</td></tr>
-        <tr><td>3</td><td><code>centroid_z</code>, descending</td><td>separates beams that start at the same level</td></tr>
-        <tr><td>4</td><td>Roomy before tight</td><td>spend the free extractions while there is still room</td></tr>
-        <tr><td>5</td><td>Subassembly continuity</td><td>finish a cluster before starting another</td></tr>
-        <tr><td>6</td><td>Chain continuity</td><td>prefer a neighbour of the last one removed</td></tr>
-        <tr><td>7</td><td>Length, then low connectivity</td><td>long and peripheral members come off first</td></tr>
+        <tr><td>2</td><td>Nothing jointed above it</td><td>never take a post out from under a beam still standing on it, even when that beam is blocked</td></tr>
+        <tr><td>3</td><td><code>base_z</code>, descending</td><td>take the high things off first</td></tr>
+        <tr><td>4</td><td><code>centroid_z</code>, descending</td><td>separates beams that start at the same level</td></tr>
+        <tr><td>5</td><td>Roomy before tight</td><td>spend the free extractions while there is still room</td></tr>
+        <tr><td>6</td><td>Subassembly continuity</td><td>finish a cluster before starting another</td></tr>
+        <tr><td>7</td><td>Chain continuity</td><td>prefer a neighbour of the last one removed</td></tr>
+        <tr><td>8</td><td>Length, then low connectivity</td><td>long and peripheral members come off first</td></tr>
       </tbody>
     </table>
   </div>
 
-  <p>Terms 2 and 3 are separate lexicographic keys, not a sum. Centroid alone ranks a ground-standing post as "high"; base alone cannot separate two beams starting at the same level; adding them produces a quantity with no physical meaning and no nameable unit. The strategy is injectable &mdash; gravity is the default, not the only thing the package can express.</p>
+  <p>Terms 3 and 4 are separate lexicographic keys, not a sum. Centroid alone ranks a ground-standing post as "high"; base alone cannot separate two beams starting at the same level; adding them produces a quantity with no physical meaning and no nameable unit. The strategy is injectable &mdash; gravity is the default, not the only thing the package can express. Six more ship with it (<code>layered</code>, <code>clearance</code>, <code>skeleton</code>, <code>subassembly</code>, <code>chain</code>, and <code>random</code> as a control), and <code>compare_strategies</code> scores several on one model side by side.</p>
 
   <h3>What happens at a dead end</h3>
 
@@ -786,7 +801,7 @@ subject to |d| = 1</code></pre>
     </table>
   </div>
 
-  <p>The first three are also mirrored onto the graph node, which is what <code>TimberModel.assembly_sequence</code> reads. That reaches into the model's private graph &mdash; in one place, on purpose, and documented, because there is no public node-attribute setter. A public API for it belongs upstream in the model.</p>
+  <p>All four live in <code>element.attributes</code>, which <code>compas_timber</code> serializes with the element, so they survive a round trip through JSON. Nothing else in the model is touched. <code>assembly_order(model)</code> reads them back as the elements in build order.</p>
 </section>
 
 <section id="overrides">
@@ -831,7 +846,8 @@ subject to |d| = 1</code></pre>
     <li><strong>The robot is not a point.</strong> Gripper and arm collision with already-placed elements is <code>compas_fab</code>'s domain. A sequence certified here can still be unbuildable for reach reasons &mdash; and users will experience that as <em>this</em> tool being wrong.</li>
     <li><strong>Monotone sequences only.</strong> No assemble, disassemble, reassemble.</li>
     <li><strong>Stability is a proxy.</strong> "Does not strand anything from the ground" is a topological connectivity test, not a structural calculation. A piece that stays connected can still tip over.</li>
-    <li><strong>Broad-phase collision.</strong> Axis-aligned bounds around a swept oriented box. False collisions are possible; reported clearances are trustworthy.</li>
+    <li><strong>Elements are boxes in the collision check.</strong> Each element is its oriented bounding box, solid to the full section, with processings ignored. False collisions are possible; reported clearances are trustworthy.</li>
+    <li><strong>The joint kinematics read <code>compas_timber</code> internals.</strong> Mostly public joint attributes, plus two private methods. A nightly CI job runs the tests against <code>compas_timber</code>'s main branch to catch a rename upstream.</li>
   </ul>
 </section>
 

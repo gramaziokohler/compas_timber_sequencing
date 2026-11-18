@@ -8,6 +8,27 @@ The algorithms live in `compas_timber_sequencing`; the per-joint input is
 `compas_timber_sequencing.kinematics.kinematic_constraint`, and the model adapter is
 `compas_timber_sequencing.timber`. `compas_timber` itself is unchanged.
 
+## At a glance
+
+```
+TimberModel ──► timber.py (adapter) ──► SequencingInput ──► search.generate() ──► SequenceResult ──► element.attributes
+                    │                     (plain data +                │
+                    └── kinematics/ ◄──── constraints callback)       ├── blocking.py    locked in every order? (once, up front)
+                        (per-joint freedom)                           ├── solver.py      can this element move right now?
+                                                                      └── preferences.py which movable one goes first?
+```
+
+1. The adapter reads the model (§10) and flattens it into a `SequencingInput`: ids, the joint
+   graph, heights and lengths, plus two callbacks — the constraints on an element given what
+   is still in place (§3), and a collision check along a direction (§4.4).
+2. The blocking graph finds the elements that are locked in every order (§5). They are placed
+   by hand.
+3. A beam search takes the model apart one element at a time (§6). At each step every remaining
+   element is solved (§4), the movable ones are ranked by a strategy (§7), and the best few
+   partial orders are carried forward.
+4. The disassembly order is reversed and the extraction vectors negated, and the result is
+   written into each element's `attributes` (§11).
+
 ---
 
 ## 1. Purpose and consumers
@@ -54,8 +75,9 @@ this package. Everything except `kinematics/` and `timber.py` needs `compas` alo
 Dependencies are `compas.geometry` and the standard library — no numpy, no scipy. Python
 3.9 syntax, because it must run under Rhino's CPython.
 
-**Constraint computation stays on the joint classes**, where the joint's private geometry
-lives. Only consumption moved.
+Both constraint *computation* (`kinematics/`) and *consumption* (everything else) live in this
+package. The computation reads the joint's planes, reference sides and parameters from
+outside `compas_timber`; §10 lists exactly what it touches.
 
 ---
 
@@ -77,6 +99,26 @@ constraint on one member depends on which others are still in place. It defaults
 | `Vector` | Inward normal of a permitted half-space: `n · d >= 0`. Butt joints, laps. |
 | `list[Vector]` | Several half-spaces; the freedom is their intersection. |
 | `Line` | A strict 1-DOF sliding axis. Mortise-tenon, dovetail, housed seat cut. |
+
+What each registered joint returns, read off the implementations:
+
+| Joint (module) | Returns |
+|---|---|
+| `ButtJoint`, `TButtJoint` (`butt`) | The butt-plane normal pointing away from the other beam; with `mill_depth`, also the two pocket walls. |
+| `LButtJoint` (`butt`) | The butt-plane normal; with `mill_depth`, also the one pocket wall the beam bears against. |
+| `YButtJoint` (`butt`) | Depends on which members are present (`assembled_elements`): ref-side normals of the present cross beams for the main beam, plus the beam direction with `mill_depth`; for a cross beam, the main beam's face and the miter plane of the other cross beam. An empty list when nothing is present. |
+| `LLapJoint` (`lap`) | Three half-spaces: the two lap cutting planes, oriented for the moving beam, and the lap face. |
+| `TLapJoint` (`lap`) | Four half-spaces: the cross beam's incident face and three faces of the main beam's lap, negated for the cross beam. |
+| `XLapJoint` (`lap`) | A `Line` along the intersection of the two cutting planes; opposite directions for the two beams. |
+| `LFrenchRidgeLapJoint` (`lap`) | Three half-spaces: the two lap cutting planes and the inclined ridge face. |
+| `LMiterJoint` (`miter`) | One half-space: the other beam's cutting-plane normal. |
+| `MortiseTenonJoint` (`mortise_tenon`) — and so `TTenonMortiseJoint`, `LTenonMortiseJoint`, `TOliGinaJoint` | A `Line` along the cross beam's reference-side normal: `+axis` for the main beam, `-axis` for the cross beam. |
+| `TDovetailJoint` (`mortise_tenon`) | A `Line` along the dovetail groove (with `rotation` applied); opposite directions for the two beams. |
+| `TStepJoint` (`step`) | Two to four half-spaces depending on `step_shape` (step, heel, tapered heel, double); with `tenon_mortise_height`, two opposed half-spaces that leave a slot. Negated for the cross beam. |
+| `TBirdsmouthJoint` (`step`) | With `mill_depth`, a `Line` along the main beam (a housed seat); otherwise the two notch faces, negated for the cross beam. |
+| `ISimpleScarf` (`scarf`) | Two half-spaces: the inclined scarf face and the beam's end direction. |
+| `PlateJoint` (`plate`) — and so every plate and panel joint | One half-space from the other plate's frame origin to this plate's. Defined, but unused today: the adapter sequences beams only. |
+| anything else | The fallback, §3.3. |
 
 ### 3.1 The `Line` is signed
 
@@ -181,14 +223,36 @@ a beam it is not jointed to — and the solver would report a clean vector with 
 margin.
 
 After the cone solve, `path_is_clear(element, d, APPROACH_DISTANCE, active_ids)` sweeps the
-element against everything still in place. If the argmax direction fails, the next
-candidate by descending margin is tried before declaring the element locked.
+element against everything still in place. Candidates are offered in descending order of
+margin, and the first one whose path is clear wins; only when every feasible direction is
+obstructed is the element locked. Without geometry (`use_geometry=False`) the check is skipped
+and the joints alone decide.
 
-The adapter's implementation is axis-aligned bounds around the swept oriented box. It skips
-jointed neighbours, whose interaction is already described exactly by the joint constraints
-and which a beam sliding along a joint face would otherwise collide with by definition.
-Excluded elements are treated as present. Being a broad phase, it errs towards "obstructed",
-which is the safe direction for a robot.
+The adapter's implementation (`TimberModelAdapter.path_is_clear`):
+
+- **Who is tested.** Every element still in place except the moving element's jointed
+  neighbours, whose interaction the joint constraints already describe exactly — a beam
+  sliding along a joint face would otherwise collide with it by definition. Excluded elements
+  (plates, fasteners) are always tested, as obstacles.
+- **What is swept.** The element's oriented bounding box (`element.obb`), moved from 5% of the
+  approach distance to the full distance along `d`. Starting a little way out keeps elements
+  already touching at the start from vetoing every direction.
+- **Broad phase.** Axis-aligned bounds of the swept box against each candidate's bounds, which
+  discards everything that is nowhere near.
+- **Narrow phase.** An exact separating-axis test between the swept oriented box and the other
+  element's oriented box: the two boxes' face normals, the cross products of their edges, and
+  the cross products of the sweep direction with the other box's edges. This is not an
+  optimization: bounds around a diagonal brace are mostly empty, and a broad phase alone
+  reports beams obstructed by empty space.
+- **Already in contact.** Unjointed beams can overlap at rest (in a reciprocal frame, many lap
+  and bear without a recorded joint). For such a pair only a direction that drives the element
+  *deeper* into the other counts as obstructed; a direction that keeps or reduces the overlap
+  is a way out.
+- **When geometry is missing.** If the moving element has no box, its path counts as clear; if
+  another element has none, a broad-phase hit on it counts as an obstruction.
+
+What remains approximate is the element, not the test: each element is its oriented bounding
+box, solid to its full section with processings ignored. That errs towards "obstructed".
 
 ---
 
@@ -245,6 +309,11 @@ A member's constraint depends on which *other* members of its joint are still pr
 per-joint lookup table. A two-element joint is the degenerate case. Ball-node and multibeam
 joints contribute precedence like any other.
 
+How far the timber adapter uses this today: it drops a joint once every other member is gone,
+but while at least one remains it calls `kinematic_constraint(joint, element)` without
+`assembled_elements`, so the Y-butt is evaluated as if all of its members were still in place.
+That is the conservative reading — it can only report less freedom than there is.
+
 ---
 
 ## 6. Search
@@ -256,11 +325,26 @@ Chosen over memoized DFS because the goal is *a good* sequence, not merely *a* s
 Beam search is deterministic, degrades gracefully instead of falling off a node-budget
 cliff, has no "best partial found" ambiguity, and makes alternative sequences nearly free.
 
-Per step, per beam:
+Before the search, the blocking graph (§5) supplies the intrinsic locks — added to the manual
+set — and the subassembly labels.
 
-1. Filter the remaining elements to those with a `Solution`. Manual-set members always pass.
-2. Rank the feasible set by the preference function.
-3. Extend, keep the *k* best partials.
+Per step, for each partial disassembly carried forward:
+
+1. **Ground and stability.** The grounded elements are those whose base is within
+   `support_tolerance` (by default a thousandth of the model's height) of the lowest base still
+   in place. One articulation-point pass then finds the elements whose removal would leave part
+   of the remaining structure with no grounded member (`disconnecting_elements`).
+2. **Feasibility.** Every remaining element is solved against the elements still in place.
+   Results are cached on `(element, frozenset(remaining))`, so the same state is never solved
+   twice across partials. Elements with a `Solution`, and manual-set members, are candidates;
+   the rest are blockers, each with its reason.
+3. **Pins.** An element pinned to another step is not a candidate here; at its own step it is
+   the only candidate.
+4. **Ranking.** The strategy (§7) ranks the candidates; the top *k* extensions of this partial
+   are kept.
+
+Then all extensions are pooled, partials that leave the same set of elements standing are
+merged (keeping the better score), and the *k* best go forward.
 
 **Hard constraints filter; soft preferences rank.** They are separate mechanisms, so a
 constraint violation cannot be outvoted by an ordering accident.
@@ -278,20 +362,58 @@ not display.
 ## 7. Ranking
 
 The preference function is injectable; `GravityStrategy` is the default, not the only thing
-the package can express. Its score, most significant term first:
+the package can express. Scores are stated in **disassembly** terms: higher means removed
+earlier, which means placed *later*. `GravityStrategy` compares, most significant first:
 
-1. **Does not strand anything from the ground.** One Tarjan articulation-point pass answers
-   this for all candidates at once in O(V+E). What it measures is connectivity to a
-   lowest-level element — a topological proxy, not a stability calculation.
-2. **`base_z`, then `centroid_z`**, both descending, as two separate lexicographic terms.
+1. **Does not strand anything from the ground** (§6, step 1). What it measures is
+   connectivity to a lowest-level element — a topological proxy, not a stability calculation.
+2. **Nothing jointed to it is still standing higher up** (`SequencingInput.above`: a jointed
+   neighbour whose base sits more than `support_tolerance` higher). This keeps the search
+   from reaching past a blocked high element and pulling a post out from under a beam still
+   standing on it. A preference, not a filter: when every candidate carries something, the
+   heights below decide.
+3. **`base_z`, then `centroid_z`**, both descending, as two separate lexicographic terms.
    Both carry real signal: centroid alone ranks a ground-standing post as "high", base alone
    cannot separate two beams starting at the same level. *Summing* them produces a quantity
    with no physical meaning and no nameable unit.
-3. **Roomy before tight.**
-4. **Subassembly continuity.**
-5. **Chain continuity**, then **length**, then **low connectivity**.
+4. **Roomy before tight.**
+5. **Same subassembly as the element removed last.**
+6. **Jointed to the element removed last.**
+7. **Longer first**, then **fewer joints first**.
 
 Element ids break exact ties, so the ranking never depends on dict iteration order.
+
+### 7.1 The other strategies
+
+Registered in `STRATEGIES` and built with `make_strategy(name)`. All but `gravity` and `random`
+are `TermStrategy`s: a list of named terms from `TERMS`, compared lexicographically, each
+normalized to 0..1 over the model, a `-` prefix inverting it.
+
+| Name | Terms, most significant first | Assembly consequence |
+|---|---|---|
+| `gravity` | as above | Bottom-up. The default. |
+| `layered` | `stable`, height band, then `subassembly`, `chain`, `centroid_z`, `roomy`, `length`, `-degree` | Course by course: height is quantized into bands (`tolerance` in model units, or the height split into `bands`, default 4), and each course is finished before the next. |
+| `clearance` | `stable`, `roomy`, `margin`, `base_z`, `centroid_z`, `subassembly`, `chain`, `-degree` | Tight fits are placed first, into the emptiest site. |
+| `skeleton` | `stable`, `-degree`, `-length`, `base_z`, `roomy`, `subassembly`, `chain` | Long, well-connected members first; infill last. |
+| `subassembly` | `stable`, `subassembly`, `chain`, `base_z`, `centroid_z`, `roomy`, `length`, `-degree` | One cluster finished before the next is started. |
+| `chain` | `stable`, `locality`, `freed`, `base_z`, `roomy`, `length`, `-degree` | Stay near the last element; minimize travel. |
+| `random` | `stable`, then a `crc32` hash of the seeded element id | A deterministic shuffle, as a control: a strategy that does not beat it is not earning its place. |
+
+For custom orders: `TermStrategy(["stable", "base_z", "-degree"])`, `WeightedStrategy` (a weighted
+sum of terms, for tuning), or `HeuristicStrategy` (any scalar function of the element id).
+
+`clearance` ranks on the raw `margin`, so near-ties between equal margins are sensitive to the
+last bit of the joint geometry; see §9.
+
+### 7.2 Comparing strategies
+
+There is no strategy that is best everywhere, so `compare_strategies(input, names)` runs
+`generate` once per strategy and `describe_comparison` tabulates the results without collapsing
+them into one score: whether it completed, tight placements, mean and minimum clearance angle,
+hand-placed count, jumps between subassemblies, the fraction of placements touching something
+already placed, height inversions, and **support inversions** — jointed pairs where the higher
+element is placed before the lower one, the measurement to read first.
+`scripts/compare_strategies.py` runs this on a saved model.
 
 **Beams only, for now, stated out loud.** Plates, panels, fasteners and group containers are
 excluded from sequencing and listed in `SequenceResult.excluded`. Giving them a height of
@@ -340,11 +462,52 @@ someone typed is never dropped without saying so.
   reasons, and users will experience that as this tool being wrong.
 - **Monotone sequences only.** No assemble → disassemble → reassemble.
 - **Intrinsic-lock detection is sound but not complete** (§5.1).
-- **The swept check is a broad phase** (§4.4).
+- **Elements are their bounding boxes in the swept check** (§4.4): solid to the full section,
+  processings ignored.
+- **N-ary joints are read with all members present** while any one remains (§5.3).
+- **The `clearance` strategy is sensitive to the last bit of the geometry** (§7.1). Moving
+  from `compas_timber` 2.x to 3.0 changed the constraint normals by at most 2.2e-16 and flipped
+  near-ties on one test model; every other input was bit-identical.
+- **A stuck run writes misleading indices** (§11).
 
 ---
 
-## 10. Usage
+## 10. Working with compas_timber
+
+The dependency runs one way: this package reads `compas_timber`, and `compas_timber` never
+imports it. `compas_timber` needs no changes to be sequenced.
+
+**What is read.**
+
+| From | What | Where |
+|---|---|---|
+| `TimberModel` | `elements()`, `joints`, `get_joints_for_element(element)` | adapter |
+| every element | `guid`, `is_beam`, `is_group_element`, `children` (groups), `attributes` | adapter |
+| beams | `centerline` (base and centroid height, length), `obb` (swept check) | adapter |
+| every joint | `elements`, `element_a`, `element_b`, `name` | adapter, fallback |
+| each joint type | its own attributes: `main_beam`, `cross_beam`, `beam_a`/`beam_b`, `location`, `butt_plane`, `cutting_plane_a`/`cutting_plane_b`, `cutting_planes`, `get_miter_planes()`, the ref-side indices, `mill_depth`, `step_shape`, `step_depth`, `heel_depth`, `tenon_mortise_height`, `rotation`, `length`, `depth_ref_side`/`depth_opp_side`, … | `kinematics/` |
+| two joint types, privately | `ISimpleScarf._get_beam_side()`, `TBirdsmouthJoint._get_cutting_planes()` | `kinematics/` |
+| helpers | `compas_timber.fabrication.StepShapeType`, `compas_timber.connections.utilities.beam_ref_side_incidence` | `kinematics/` |
+
+**What is written.** Only `element.attributes`, and only when `apply_to_model=True` (§11).
+
+**How the coupling is contained.** None of the joint attributes above is a documented API, and
+two are private. The `timber` extra pins `compas_timber >=3.0,<4`, so a major release cannot
+break this silently, and `.github/workflows/nightly.yml` runs the whole suite against
+`compas_timber`'s main branch every night, so a rename shows up within a day.
+
+**Known upstream issue (November 2026).** `compas` 2.16.0 breaks plate creation in
+`compas_timber` 3.0.0 and on its main branch: `Plate.from_outline_thickness` →
+`compas_timber.utils.is_polyline_clockwise` measures an angle across the zero-length closing
+edge of a closed outline, which `compas` 2.15 tolerated and 2.16 rejects with
+`ValueError: Cannot compute the angle between one or more zero-length vectors`.
+`compas_timber`'s allowed range, `compas >=2.15.1,<3.0`, admits 2.16. Sequencing itself is
+unaffected — it sequences beams only — but the two tests in this package that build a plate as
+a fixture fail with `compas` 2.16.
+
+---
+
+## 11. Usage
 
 ```python
 from compas_timber_sequencing.timber import assembly_order
@@ -361,10 +524,36 @@ for index, element_id in enumerate(result.order):
     state = result.state(element_id)                # roomy | tight | locked
 ```
 
-`generate_assembly_sequence` writes `assembly_sequence`, `insertion_vector`,
-`requires_manual_assembly` and `extraction_state` into each element's `attributes`, which
-`compas_timber` serializes with the element. `assembly_order(model)` reads them back as a
-list of elements in assembly order.
+`generate_assembly_sequence(model, ...)` takes:
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `manual_set` | read from the elements | Element ids (`str(element.guid)`) to place by hand. |
+| `pinned_order` | none | Element id → assembly index, or a list of ids in assembly order. |
+| `strategy` | `GravityStrategy()` | Any strategy from §7, e.g. `make_strategy("clearance")`. |
+| `width` | 5 | How many partial orders the search carries forward. |
+| `distance` | 100.0 | Swept-check approach distance, in model units. |
+| `use_geometry` | `True` | Run the swept check; `False` trusts the joints alone. |
+| `apply_to_model` | `True` | Write the result into the element attributes. |
+
+It returns `(result, adapter)`; `adapter.elements_by_id` turns ids back into elements and
+`adapter.excluded` says what was left out and why.
+
+**What is written.** For each element in `result.order`: `assembly_sequence` (its index),
+`insertion_vector` (a unit `Vector`, or `None` when hand-placed), `requires_manual_assembly`
+and `extraction_state` (`roomy`, `tight` or `locked`), all in `element.attributes`, which
+`compas_timber` serializes with the element. `assembly_order(model)` reads them back as the
+elements in assembly order. On the next run `requires_manual_assembly` is read back as the
+manual set, so an amended set survives; pins are never stored.
+
+**After a stuck run**, `result.order` holds only the elements that were removed before the
+search stopped — the *last* ones to be assembled — and they are written with indices from 0.
+Elements that were not reached keep whatever an earlier run wrote. Check `result.is_complete`
+before relying on the attributes.
+
+**Tracing.** The library never prints. `set_tracer(True)` prints each search step;
+`set_tracer(lines.append)` collects them into a list, which is the reliable way to get them into
+a Grasshopper panel; `set_tracer(None)` turns it off.
 
 The original `KinematicSequenceGenerator` / `InsertionSolver` were not carried over; they
 remain on the archived `compas_timber` branch (tag `archive/joint-kinematics`).

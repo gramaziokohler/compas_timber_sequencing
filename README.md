@@ -51,6 +51,8 @@ Overrides:
 * `manual_set=...` declares elements as hand-placed. It is stored on the elements and survives re-runs.
 * `pinned_order=...` fixes positions for one particular build.
 * `strategy=make_strategy("clearance")` uses a different ranking. `compare_strategies` scores them side by side, and `scripts/compare_strategies.py` runs that on a saved model.
+* `use_geometry=False` skips the collision check and trusts the joints alone; `distance=` sets the approach distance (default 100 model units); `width=` sets how many partial orders the search keeps (default 5); `apply_to_model=False` leaves the model untouched.
+* `set_tracer(True)` prints each search step, and `set_tracer(lines.append)` collects the steps into a list, for a Grasshopper panel.
 
 Beams only for now. Plates, panels and fasteners are excluded and reported in `result.excluded`.
 
@@ -84,11 +86,77 @@ are private methods (`ISimpleScarf._get_beam_side`, `TBirdsmouthJoint._get_cutti
 `compas_timber` is therefore pinned to `>=3.0,<4`, and a nightly CI job runs the tests against
 `compas_timber`'s main branch.
 
+`PlateJoint` has an implementation, but the adapter sequences beams only, so it is not used yet.
+Joints with more than two members (the Y-butt) are evaluated as if all members were in place, as
+long as any one of them is.
+
 ## How it works
 
-* [`docs/spec.md`](docs/spec.md): the design (constraint types, solver, blocking graph, search, ranking, overrides, known limitations).
+```
+TimberModel ──► timber.py (adapter) ──► SequencingInput ──► search.generate() ──► SequenceResult ──► element.attributes
+                    │                     (plain data +                │
+                    └── kinematics/ ◄──── constraints callback)       ├── blocking.py    locked in every order?
+                        (per-joint freedom)                           ├── solver.py      can this element move now?
+                                                                      └── preferences.py which movable one first?
+```
+
+1. **Adapter** (`timber.py`). Reads the beams (plates, panels and fasteners are excluded), their
+   joints, centerline heights and lengths, and turns them into a `SequencingInput`: plain ids
+   and numbers, plus two callbacks. One gives the constraints on an element from its joints that
+   still have a member in place, via `kinematic_constraint`. The other sweeps the element's
+   bounding box 100 model units along a direction and checks for collisions with the elements it
+   is not jointed to.
+2. **Locked in every order** (`blocking.py`). A pair is an edge when the joint alone locks one
+   member. Cycles of such edges can never come apart, so they are placed by hand.
+3. **Search** (`search.py`). Disassembly, carrying the 5 best partial orders. At each step every
+   remaining element is solved against what is still in place (`solver.py`: the direction with
+   the most clearance inside the cone its joints allow, which also has to pass the collision
+   check). The movable ones are ranked by a strategy (`preferences.py`), which by default keeps
+   the structure connected to the ground, takes nothing out from under something jointed above
+   it, and goes top-down.
+4. **Result.** Reversed into an assembly order, with the extraction vectors negated into
+   insertion vectors, a roomy/tight state and clearance angle per element, the hand-placement
+   set, and structured reports for dead ends, unhonourable pins and stale overrides.
+
+| Module | Needs `compas_timber` | Role |
+|---|---|---|
+| `kinematics/` | yes | Per-joint freedom, dispatched on the joint's class |
+| `timber.py` | yes | Model ⇄ `SequencingInput`; writes the result into `element.attributes` |
+| `boundary.py` | no | `SequencingInput`, everything the algorithms may know |
+| `constraints.py` | no | `HalfSpace`, `SignedAxis` |
+| `solver.py` | no | One element, one state: `Solution` or `Locked` |
+| `blocking.py` | no | Intrinsic locks, ground connectivity, subassemblies |
+| `search.py` | no | Beam search; `generate()` |
+| `preferences.py` | no | Ranking strategies (`gravity`, `layered`, `clearance`, `skeleton`, `subassembly`, `chain`, `random`) |
+| `compare.py` | no | Scores several strategies on one model, side by side |
+| `result.py`, `trace.py` | no | Result types; opt-in tracing (`set_tracer`) |
+
+More:
+
+* [`docs/spec.md`](docs/spec.md): the design in full, including what each joint returns (§3), the collision check (§4.4), the search (§6), the strategies (§7) and exactly what is read from `compas_timber` (§10).
 * [`docs/explained.html`](docs/explained.html): an illustrated walkthrough.
 * [`docs/plan.md`](docs/plan.md): the original implementation plan (historical).
+
+## Working with compas_timber
+
+`compas_timber` never imports this package and needs no changes. This package reads from it:
+
+* **From the model:** `elements()`, `joints`, `get_joints_for_element()`.
+* **From elements:** `guid`, `is_beam`, `is_group_element`, `children`, `centerline`, `obb`, `attributes`.
+* **From joints:** `elements`, and each joint type's planes, reference-side indices and parameters (see [`docs/spec.md`](docs/spec.md) §10).
+
+It writes only `element.attributes`: `assembly_sequence`, `insertion_vector`,
+`requires_manual_assembly` and `extraction_state`.
+
+## Known issues
+
+* **`compas` 2.16.0 breaks plate creation in `compas_timber` 3.0.0** (and on its main branch):
+  `Plate.from_outline_thickness` → `compas_timber.utils.is_polyline_clockwise` raises
+  `ValueError: Cannot compute the angle between one or more zero-length vectors` on a closed
+  outline. Sequencing is unaffected, because it sequences beams only. The two tests here that
+  build a plate as a fixture fail with `compas` 2.16. To be fixed in `compas_timber`.
+* **After a stuck run** (`result.is_complete` is `False`), the indices written into the element
+  attributes are not absolute assembly positions; see [`docs/spec.md`](docs/spec.md) §11.
 
 ## Development
 
